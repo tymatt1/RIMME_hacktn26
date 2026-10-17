@@ -9,7 +9,7 @@ export default [
       ecmaVersion: 'latest',
       sourceType: 'module',
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: { document: 'readonly', window: 'readonly', Blob: 'readonly', URL: 'readonly' },
+      globals: { document: 'readonly', window: 'readonly', Blob: 'readonly', URL: 'readonly', FormData: 'readonly' },
     },
     rules: { 'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z]' }] },
   },
