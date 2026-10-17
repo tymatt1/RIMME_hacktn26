@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node --test src/lib/plan.test.js"
+    "test": "node --test src/lib/*.test.js"
   },
   "dependencies": {
     "react": "^19.3.1",
