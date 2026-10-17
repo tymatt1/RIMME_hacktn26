@@ -88,52 +88,48 @@ function Landscape() {
 }
 
 const steps = [
-  { number: '01', title: 'Understand their needs', detail: 'A few simple questions. A clearer picture of what matters.' },
-  { number: '02', title: 'Explore your options', detail: 'Compare places with your family’s priorities in mind.' },
-  { number: '03', title: 'Make a plan, together', detail: 'Turn the next chapter into small, manageable steps.' },
+  { number: '01', title: 'Describe the care needed', detail: 'Record daily support needs and questions for the care team.' },
+  { number: '02', title: 'Compare nursing homes', detail: 'Review facility details and save homes to discuss with your family.' },
+  { number: '03', title: 'Prepare for move-in', detail: 'Assign tasks and prepare a profile of the person moving into care.' },
 ]
 
-export default function Welcome({ onStart, onDemo, onSignIn }) {
+export default function Welcome({ onStart, onSignIn }) {
   return (
     <div className="welcome-page">
       <a className="welcome-skip" href="#welcome-main">Skip to content</a>
       <header className="welcome-header">
         <div className="welcome-brand" aria-label="Carebridge"><BridgeMark className="welcome-brand-mark" /><span>carebridge<span className="welcome-brand-dot">.</span></span></div>
-        <div className="welcome-header-actions"><span className="welcome-header-note">Here for your next chapter</span><button type="button" className="welcome-signin" onClick={onSignIn}>Sign in <Arrow diagonal /></button></div>
+        <div className="welcome-header-actions"><button type="button" className="welcome-signin" onClick={onSignIn}>Sign in <Arrow diagonal /></button></div>
       </header>
 
       <main id="welcome-main" className="welcome-main" tabIndex={-1}>
         <section className="welcome-hero" aria-labelledby="welcome-title">
           <div className="welcome-copy">
-            <p className="welcome-eyebrow"><span /> A FAMILY’S GUIDE TO FINDING CARE</p>
-            <h1 id="welcome-title">A little clarity.<br />A way <em>forward.</em></h1>
-            <p className="welcome-description">Finding care for someone you love is a big step. We’ll help you understand their needs, explore places, and make a plan—one small step at a time.</p>
+            <h1 id="welcome-title">Plan a move to a<br /><em>nursing home.</em></h1>
+            <p className="welcome-description">When a family member needs nursing home care, there’s a lot to work out. Carebridge helps you compare homes and keep track of what needs to happen before move-in.</p>
             <div className="welcome-buttons">
-              <button type="button" className="welcome-start" onClick={onStart}>Start your journey <Arrow /></button>
-              <button type="button" className="welcome-sample" onClick={onDemo}>Explore a sample plan <Arrow diagonal /></button>
+              <button type="button" className="welcome-start" onClick={onStart}>Create a transition plan <Arrow /></button>
             </div>
-            <p className="welcome-reassurance"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4 10 4 4 8-8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg> No need to have all the answers.</p>
           </div>
 
           <div className="welcome-art">
             <Landscape />
             <div className="welcome-plan-peek">
-              <div className="welcome-peek-heading"><span className="welcome-peek-icon"><BridgeMark /></span><span>ONE STEP AT A TIME<span className="welcome-peek-name">Arthur’s next chapter</span></span><span className="welcome-peek-badge">Sample plan</span></div>
-              <div className="welcome-peek-task"><span className="welcome-peek-check">✓</span><span>Start with what matters to Arthur</span></div>
-              <div className="welcome-peek-task"><span className="welcome-peek-check">✓</span><span>Find places close to family</span></div>
-              <div className="welcome-peek-task"><span className="welcome-peek-pending" /><span>Bring a little bit of home</span><span className="welcome-peek-heart" aria-hidden="true">♡</span></div>
+              <div className="welcome-peek-heading"><span className="welcome-peek-icon"><BridgeMark /></span><span className="welcome-peek-name">Arthur’s move-in plan</span><span className="welcome-peek-badge">Sample plan</span></div>
+              <div className="welcome-peek-task"><span className="welcome-peek-check">✓</span><span>Discuss Arthur’s care needs</span></div>
+              <div className="welcome-peek-task"><span className="welcome-peek-check">✓</span><span>Compare homes near family</span></div>
+              <div className="welcome-peek-task"><span className="welcome-peek-pending" /><span>Pack photos and familiar items</span><span className="welcome-peek-heart" aria-hidden="true">♡</span></div>
             </div>
-            <span className="welcome-art-caption">A new chapter. Still their story.</span>
           </div>
         </section>
 
         <section className="welcome-journey" aria-label="How Carebridge helps">
-          <div className="welcome-journey-intro"><p className="welcome-eyebrow">A LITTLE SUPPORT, ALL THE WAY THROUGH</p><h2>From “where do we start?”<br />to “we have a plan.”</h2></div>
+          <div className="welcome-journey-intro"><h2>What goes into your plan</h2></div>
           <div className="welcome-step-grid">{steps.map((step) => <div className="welcome-step" key={step.number}><span className="welcome-step-number">{step.number}</span><h3>{step.title}</h3><p>{step.detail}</p></div>)}</div>
         </section>
       </main>
 
-      <footer className="welcome-footer"><span><span className="welcome-prototype-dot" /> Interactive prototype · Sample information only</span><span>Built around their needs. Always in your family’s hands.</span></footer>
+      <footer className="welcome-footer"><span>Your family chooses the home and reviews the plan.</span></footer>
     </div>
   )
 }

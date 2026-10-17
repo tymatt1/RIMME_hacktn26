@@ -40,6 +40,7 @@ export const sampleIntake = {
   knownServices: ['Not sure'],
   searchLocation: 'Nashville, TN',
   travelMiles: 15,
+  monthlyBudget: null,
   coverage: ['Not sure'],
   priorities: ['Close to family', 'Staffing', 'Rehabilitation services'],
   coordinators: 'Several relatives',
@@ -60,7 +61,7 @@ export const facilities = [
     roomOptions: ['Shared room', 'Private room'],
     coverageLabel: 'Coverage and costs need confirmation',
     availabilityLabel: 'Bed availability not verified',
-    description: 'A fictional neighborhood setting with shared gardens and spaces for family visits.',
+    description: 'This example home has shared gardens and spaces for family visits.',
     highlights: ['Within a 15-mile example radius', 'Sample rehabilitation program', 'Example family meeting space'],
     questions: ['Can your team support the needs we have listed?', 'What does a typical day look like during a recovery stay?', 'How can our family stay involved?'],
     inspectionNote: 'This invented report is provided only to demonstrate the details panel. It does not describe a real inspection.',
@@ -79,7 +80,7 @@ export const facilities = [
     roomOptions: ['Shared room', 'Private room'],
     coverageLabel: 'Coverage and costs need confirmation',
     availabilityLabel: 'Bed availability not verified',
-    description: 'An invented recovery setting with a bright activity room and a quiet family lounge.',
+    description: 'This example recovery home has an activity room and a quiet family lounge.',
     highlights: ['Within a 15-mile example radius', 'Example private room option', 'Sample activity program'],
     questions: ['What support is available on evenings and weekends?', 'How are recovery goals discussed with residents?', 'What should we ask about the sample follow-up items?'],
     inspectionNote: 'The follow-up items and staffing hours are fictional. In a real service, this area would show dated, verified source information.',
@@ -98,7 +99,7 @@ export const facilities = [
     roomOptions: ['Shared room'],
     coverageLabel: 'Coverage and costs need confirmation',
     availabilityLabel: 'Bed availability not verified',
-    description: 'A fictional residential setting with smaller gathering spaces and a familiar daily rhythm.',
+    description: 'This example home has smaller gathering spaces and provides daily living and memory support.',
     highlights: ['Within a 15-mile example radius', 'Sample memory support program', 'Example shared room option'],
     questions: ['How do you learn about each person’s routines and preferences?', 'What support can you provide for memory and orientation?', 'What would you explain about a concern in an inspection report?'],
     inspectionNote: 'A fabricated concern appears here to demonstrate how a family could explore questions. It is not a finding about a real provider.',
@@ -117,7 +118,7 @@ export const facilities = [
     roomOptions: ['Shared room', 'Private room'],
     coverageLabel: 'Coverage and costs need confirmation',
     availabilityLabel: 'Bed availability not verified',
-    description: 'An invented care setting with an accessible courtyard and room for family gatherings.',
+    description: 'This example home has an accessible courtyard and space for family gatherings.',
     highlights: ['Within a 15-mile example radius', 'Example courtyard and family spaces', 'Sample longer-term stay option'],
     questions: ['How are families included in the arrival plan?', 'Which personal items can a resident bring?', 'Who is the main contact for questions after move-in?'],
     inspectionNote: 'All report details and metrics are made up for this prototype. A real facility comparison would require verified data and current context.',
@@ -131,7 +132,7 @@ export const careQuestions = {
   general: [
     'What type of setting could support the needs we described?',
     'Which needs should we clarify before calling facilities?',
-    'What would help our family make this decision together?',
+    'Which decisions need to be made before discharge or move-in?',
   ],
   hospital: [
     'What is the proposed discharge date, and how certain is it?',
@@ -168,11 +169,11 @@ export const planTasks = [
 
 export const knowMePrompts = [
   { id: 'preferredName', label: 'I like to be called', type: 'shortText', placeholder: 'A first name or nickname' },
-  { id: 'morning', label: 'My morning rhythm', type: 'singleChoice', choices: ['Early riser', 'Slow start', 'Varies day to day', 'Still learning'] },
+  { id: 'morning', label: 'My morning routine', type: 'singleChoice', choices: ['Early riser', 'Slow start', 'Varies day to day', 'Still learning'] },
   { id: 'interests', label: 'Things I enjoy', type: 'multiChoice', choices: ['Music', 'Gardening', 'Reading', 'Games', 'Sports', 'Time outdoors', 'Faith or reflection', 'Being with family'] },
   { id: 'comforts', label: 'What helps me feel comfortable', type: 'multiChoice', choices: ['A familiar blanket', 'Family photos', 'Favorite music', 'A quiet space', 'Knowing the plan', 'A familiar visitor'] },
   { id: 'communication', label: 'How to make conversation easier', type: 'multiChoice', choices: ['Face me when speaking', 'Give me time to respond', 'Use larger print', 'Reduce background noise', 'Check that I have my glasses or hearing aids'] },
-  { id: 'notes', label: 'One more thing to know about me', type: 'optionalText', placeholder: 'Optional — a routine, preference, or story' },
+  { id: 'notes', label: 'Other things staff should know', type: 'optionalText', placeholder: 'A routine or preference that staff should know about' },
 ];
 
 export function buildCareSummary(intake = {}) {
@@ -182,11 +183,11 @@ export function buildCareSummary(intake = {}) {
   const hospital = currentSetting === 'Hospital';
   const dailySupport = Object.entries(intake.dailySupport || {})
     .filter(([, level]) => level === 'Some help' || level === 'Substantial help')
-    .map(([activity]) => activity);
+    .map(([activity]) => ({ bathing: 'bathing', dressing: 'getting dressed', toileting: 'using the bathroom', eating: 'eating', medicines: 'taking medicines' })[activity] || activity);
 
   return {
     title: `A starting point for ${name}`,
-    intro: 'Your answers bring the practical details into one place. You can change them as your family learns more.',
+    intro: 'Review the needs and preferences you recorded before contacting nursing homes.',
     facts: [
       { label: 'Current setting', value: currentSetting },
       { label: 'Timing', value: intake.timing || 'Still exploring' },
@@ -194,11 +195,11 @@ export function buildCareSummary(intake = {}) {
       { label: 'Search area', value: intake.searchLocation || 'Not yet selected' },
     ],
     supportSummary: dailySupport.length
-      ? `You noted support with ${dailySupport.join(', ')}. Bring these details to the care team so they can discuss what is needed.`
-      : 'You can add everyday support needs now or come back to them after a conversation with the care team.',
+      ? `You recorded a need for help with ${dailySupport.join(', ')}. Ask the care team what support the nursing home would need to provide.`
+      : 'You haven’t recorded specific daily support needs. You can update the intake after speaking with the care team.',
     prioritiesSummary: priorities.length
-      ? `Your family highlighted ${priorities.map((item) => item.toLowerCase()).join(', ')}.`
-      : 'Your family can choose a few priorities to help guide conversations.',
+      ? `Your top priorities, in order: ${priorities.slice(0, 3).map((item, index) => `${index + 1}. ${item.toLowerCase()}`).join('; ')}.${typeof intake.monthlyBudget === 'number' ? ` Monthly out-of-pocket budget: $${intake.monthlyBudget.toLocaleString('en-US')}.` : ''}`
+      : `Rank your priorities to help guide conversations.${typeof intake.monthlyBudget === 'number' ? ` Monthly out-of-pocket budget: $${intake.monthlyBudget.toLocaleString('en-US')}.` : ''}`,
     questions: [...careQuestions.general, ...(hospital ? careQuestions.hospital : careQuestions.home)],
     note: 'This summary reflects the answers in the demo. It does not determine eligibility, coverage, or the right level of care.',
   };

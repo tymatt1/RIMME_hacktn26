@@ -15,14 +15,14 @@ Open the Local URL printed by Vite. If npm is unavailable but pnpm is installed,
 
 ## Explore the demo
 
-Choose **Explore a sample plan** to load Maria and her grandfather Arthur's journey. Or choose **Start your journey** to try simulated account creation with invented details. The simulation accepts any valid-format email and a made-up password of four or more characters. Neither is saved or transmitted, and no actual account is created. Demo sign-in opens the browser's existing draft; it does not retrieve an account by email.
+Choose **Create a transition plan**, then **See an example profile.** to load Maria and her grandfather Arthur's example. Or fill in the form to try simulated account creation with invented details. The simulation accepts any valid-format email and a made-up password of four or more characters. Neither is saved or transmitted, and no actual account is created. Demo sign-in opens the browser's existing draft; it does not retrieve an account by email.
 
 Seven main screens connect the journey:
 
 1. Welcome and simulated account creation/sign-in.
 2. Your situation: relationship, current living setting, timing, hospital context.
 3. Everyday support: mobility, daily activities, memory, communication.
-4. Family priorities: location, travel range, coverage categories, family support.
+4. Family priorities: location, travel range, monthly out-of-pocket budget, coverage categories, draggable priority ranking, family support. Reorder with a mouse, touch grip, arrow buttons, or keyboard Up/Down/Home/End on a grip. The budget is optional ($0–$20,000/month in $500 steps) and does not filter fictional facilities or estimate actual prices. Both preferences appear in the draft/export; the starting-point summary shows the top three priorities in order.
 5. Starting point: editable answers, care-setting discussion prompts, care-team questions.
 6. Nursing home exploration: four fictional facilities, filters, sorting, saved shortlist, side-by-side comparison, detail/inspection/call-question panels.
 7. Transition Plan: personalized checklist, task assignments, documents/packing, family members, editable Know Me profile, downloadable JSON.
@@ -33,7 +33,7 @@ Large choice controls minimize typing. Keyboard focus, labeled radio groups, dia
 
 Sample intake answers, current screen, shortlist, checked tasks, family assignments, and Know Me content save in this browser's localStorage under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
 
-**Download plan** exports the draft as JSON. The file can be shared manually for review; there is no backend, live AI, invitation system, document upload, or external transmission. Use **Explore a sample plan** from the welcome screen to reset to the sample journey. Clear site storage to remove the browser draft completely.
+**Download plan** exports the draft as JSON. The file can be shared manually for review; there is no backend, live AI, invitation system, document upload, or external transmission. Use **See an example profile.** in the welcome screen's start/sign-in dialog to reset to the sample journey. Clear site storage to remove the browser draft completely.
 
 ## Checks and production build
 
@@ -44,7 +44,7 @@ npm run build
 npm run preview
 ```
 
-The tests cover intake-to-checklist personalization, combined facility filters/sorting, preservation of original fixtures, stale local draft recovery, and exclusion of account credentials from storage. `build` creates an ignored `dist/` folder; `preview` serves that production build. Dependency versions remain in `package-lock.json`.
+The tests cover intake-to-checklist personalization, combined facility filters/sorting, preservation of original fixtures, stale local draft recovery, exclusion of account credentials from storage, priority reordering, migration of earlier pick-three answers, and budget persistence/validation. `build` creates an ignored `dist/` folder; `preview` serves that production build. Dependency versions remain in `package-lock.json`.
 
 ## Project layout
 
