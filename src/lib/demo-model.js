@@ -50,12 +50,17 @@ export function toPlanIntake(intake = {}) {
 export function visibleFacilities(facilities, miles = Infinity, program = 'All sample options', sort = 'distance') {
   const parsedMiles = Number(miles)
   const maxDistance = Number.isFinite(parsedMiles) ? Math.max(0, parsedMiles) : Infinity
-  const filtered = facilities.filter((facility) => facility.distance <= maxDistance && (program === 'All sample options' || facility.provides.includes(program)))
+  // Live facilities carry filterTags; fixtures use provides. A missing distance is kept only when no limit applies.
+  const inRange = (facility) => facility.distance === null || facility.distance === undefined ? maxDistance === Infinity : facility.distance <= maxDistance
+  const matches = (facility) => program.startsWith('All') || (facility.filterTags ?? facility.provides).includes(program)
+  const filtered = facilities.filter((facility) => inRange(facility) && matches(facility))
   const byName = (left, right) => left.name.localeCompare(right.name)
+  const hours = (facility) => facility.staffingHours ?? -1
+  const miles_ = (facility) => facility.distance ?? Infinity
   return filtered.sort((left, right) => {
     if (sort === 'name') return byName(left, right)
-    if (sort === 'staffing') return right.staffingHours - left.staffingHours || byName(left, right)
-    return left.distance - right.distance || byName(left, right)
+    if (sort === 'staffing') return hours(right) - hours(left) || byName(left, right)
+    return miles_(left) - miles_(right) || byName(left, right)
   })
 }
 
@@ -82,6 +87,23 @@ function hydrateIntake(value) {
   return defaults
 }
 
+const text = (value) => (typeof value === 'string' ? value : '')
+
+// The server-generated plan (AI explainer, doctor questions, checklist) is cached so a refresh does not re-run the AI.
+function hydrateGuidance(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.key !== 'string') return null
+  const tasks = Array.isArray(value.tasks) ? value.tasks.filter((task) => task && typeof task.id === 'string' && /^[a-z][a-z0-9-]*$/i.test(task.id) && typeof task.label === 'string').map((task) => ({
+    id: task.id, apiId: Number.isInteger(task.apiId) ? task.apiId : null, label: task.label, detail: text(task.detail), category: text(task.category), priority: Number(task.priority) || 3,
+  })) : []
+  return { key: value.key, planId: Number.isInteger(value.planId) ? value.planId : null, explainer: text(value.explainer), questions: stringList(value.questions), tasks }
+}
+
+function hydrateAiDraft(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const entries = Object.entries(value).filter(([key, item]) => /^[a-z_]+$/.test(key) && typeof item === 'string')
+  return entries.length ? Object.fromEntries(entries) : null
+}
+
 function hydrateDraft(draft) {
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return null
   const profile = draft.profile && typeof draft.profile === 'object' && !Array.isArray(draft.profile) ? draft.profile : {}
@@ -99,10 +121,12 @@ function hydrateDraft(draft) {
       comforts: stringList(profile.comforts),
       communication: stringList(profile.communication),
       notes: typeof profile.notes === 'string' ? profile.notes : '',
+      aiDraft: hydrateAiDraft(profile.aiDraft),
     },
     members: safeMembers,
     assignees: Object.fromEntries(Object.entries(assignees).filter(([task, member]) => /^[a-z][a-z0-9-]*$/i.test(task) && task !== 'email' && task !== 'password' && (safeMembers.includes(member) || member === 'Unassigned'))),
     chosenFacility: typeof draft.chosenFacility === 'string' ? draft.chosenFacility : '',
+    guidance: hydrateGuidance(draft.guidance),
   }
 }
 

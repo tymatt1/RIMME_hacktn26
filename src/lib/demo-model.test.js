@@ -50,7 +50,7 @@ test('drafts hydrate stale arrays and nested values and omit account credentials
   assert.deepEqual(draft.completed, ['packing'])
   assert.deepEqual(draft.shortlist, [])
   assert.deepEqual(draft.members, ['Me', 'Family'])
-  assert.deepEqual(draft.profile, { morning: '', interests: [], comforts: [], communication: [], notes: '' })
+  assert.deepEqual(draft.profile, { morning: '', interests: [], comforts: [], communication: [], notes: '', aiDraft: null })
   assert.equal(saveDraft({ ...draft, page: 'plan', email: 'demo@example.com', password: 'not-a-real-password', intake: { ...draft.intake, password: 'hidden' }, profile: { morning: 'Early riser', interests: ['Music'], comforts: null, communication: ['Use larger print'], notes: 'Likes jazz', password: 'hidden' }, members: ['Me', 'Daniel'], assignees: { packing: 'Daniel', invalid: 'Missing member', email: 'Me' }, chosenFacility: 'cedar-grove' }), true)
   assert.equal(loadDraft().page, 'plan')
   assert.deepEqual(loadDraft().members, ['Me', 'Daniel'])

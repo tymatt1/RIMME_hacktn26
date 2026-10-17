@@ -70,3 +70,10 @@ src/
 - Design actual account authentication, consent, retention, and family-sharing permissions before using personal information.
 
 This version is for design review. It explains and organizes; family members and care professionals make decisions.
+
+## Backend connection
+
+The app calls the platform API (OCI + MySQL HeatWave, Tennessee CMS data) under `/api`.
+- Dev: `npm run dev` proxies `/api` to `API_PROXY_TARGET` (default `http://147.224.195.130:8000`). See `.env.example`.
+- If the API is unreachable the app falls back to fictional sample data (badge shows "OFFLINE DEMO DATA").
+- Production: serve `dist/` and proxy `/api` to the backend on the same origin (avoids mixed-content issues).
