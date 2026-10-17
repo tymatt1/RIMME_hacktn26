@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import Welcome from './components/Welcome.jsx'
-import ProfileCallout from './components/ProfileCallout.jsx'
 import PriorityRanking from './components/PriorityRanking.jsx'
 import CostPreference from './components/CostPreference.jsx'
 import Icon from './components/Icon.jsx'
@@ -198,8 +197,7 @@ export default function App() {
     {page === 'welcome' ? <Welcome onStart={() => setModal({ type: 'account' })} onSignIn={() => setModal({ type: 'signin' })} /> : <div className="app-shell">
       <a className="skip-link" href="#main">Skip to content</a>
       <aside className="sidebar"><button className="brand" onClick={() => setPage('welcome')} aria-label="Carebridge home"><span className="brand-symbol"><Icon name="bridge" size={28} /></span><span>carebridge</span></button><nav aria-label="Your plan navigation">{nav.map(([id, label, icon], index) => <button className={`nav-item ${page === id ? 'active' : ''}`} key={id} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}><span className="nav-icon">{index < 3 ? `0${index + 1}` : <Icon name={icon} size={18} />}</span><span>{label}</span></button>)}</nav></aside>
-      <div className="workspace"><header className="topbar workspace-topbar"><div className="topbar-right">
-        <span className="demo-badge"><span />DEMO WORKSPACE</span><span className={`demo-badge data-badge ${live ? 'live' : ''}`} title={live ? 'Facilities come from CMS Care Compare data (Tennessee)' : 'Showing fictional examples because the data service is not reachable'}><span />{live ? 'LIVE CMS DATA · TN' : catalogState.source === 'loading' ? 'CONNECTING…' : 'OFFLINE DEMO DATA'}</span><ProfileCallout caregiverName={intake.caregiverName} personName={name} memberCount={members.length} storageSaved={storageSaved} onFamily={() => { setPage('plan'); setPlanTab('Family') }} /></div></header>
+      <div className="workspace">
         <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button secondary" onClick={download}><Icon name="download" size={17} />Download plan</button>}</div>
           {step >= 0 && <div className="intake-progress" aria-label={`Intake step ${step + 1} of 3`}>{['Your situation', 'Everyday support', 'Family priorities'].map((item, i) => <button key={item} className={i <= step ? 'reached' : ''} onClick={() => setPage(nav[i][0])}><span>{i < step ? <Icon name="check" size={13} /> : i + 1}</span>{item}</button>)}</div>}
 
