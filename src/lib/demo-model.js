@@ -131,20 +131,20 @@ function hydrateDraft(draft) {
   }
 }
 
-export function loadDraft() {
+export function loadDraft(storageKey = draftKey) {
   try {
-    const stored = window.localStorage.getItem(draftKey)
+    const stored = window.localStorage.getItem(storageKey)
     return stored ? hydrateDraft(JSON.parse(stored)) : null
   } catch {
     return null
   }
 }
 
-export function saveDraft(draft) {
+export function saveDraft(draft, storageKey = draftKey) {
   try {
     const safeDraft = hydrateDraft(draft)
     if (!safeDraft) return false
-    window.localStorage.setItem(draftKey, JSON.stringify(safeDraft))
+    window.localStorage.setItem(storageKey, JSON.stringify(safeDraft))
     return true
   } catch {
     return false

@@ -7,6 +7,7 @@ import { facilities, sampleIntake, buildCareSummary, careQuestions, knowMePrompt
 import { buildTasks } from './lib/plan.js'
 import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './lib/demo-model.js'
 import { api } from './lib/api.js'
+import { accountDraftKey, createDemoAccount, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount } from './lib/demo-accounts.js'
 import { facilityFromApi, guidanceFromResponse, intakeKey, toBackendIntake, toKnowMeBody, categoryLabels, liveFilters, knowMeSections } from './lib/api-model.js'
 import { LiveOverview, LiveInspection, liveCompareRows } from './components/FacilityLive.jsx'
 
@@ -133,8 +134,12 @@ function ProfileMenu({ caregiverName, personName, onPreferences, onSignOut }) {
   </div>
 }
 export default function App() {
-  const [stored] = useState(loadDraft)
-  const [page, setPage] = useState(stored?.page || 'welcome')
+  const [initialSession] = useState(loadDemoSession)
+  const stored = initialSession.draft
+  const [accountId, setAccountId] = useState(initialSession.accountId)
+  const [legacyActive, setLegacyActive] = useState(Boolean(stored && !initialSession.accountId))
+  const [authError, setAuthError] = useState('')
+  const [page, setPage] = useState(stored ? (stored.page === 'welcome' ? 'welcome' : resumePage(stored)) : 'welcome')
   const [intake, setIntake] = useState(stored?.intake || blankIntake())
   const [shortlist, setShortlist] = useState(stored?.shortlist || [])
   const [completed, setCompleted] = useState(stored?.completed || [])
@@ -163,6 +168,7 @@ export default function App() {
   const [knowMeState, setKnowMeState] = useState('idle')
   const mainRef = useRef(null)
   const firstRender = useRef(true)
+  const accountEpoch = useRef(0)
   const patch = (values) => setIntake((current) => ({ ...current, ...values, ...('currentSetting' in values && values.currentSetting !== 'Hospital' ? { dischargeDate: '', hospitalStatus: 'Not sure' } : {}) }))
   const name = intake.personName.trim() || 'your loved one'
   const backendBody = toBackendIntake(intake)
@@ -181,7 +187,11 @@ export default function App() {
   const savedHomes = catalog.filter((f) => shortlist.includes(f.id))
   const activeFacility = modal?.type === 'facility' ? catalog.find((f) => f.id === modal.id) : null
   const closeModal = () => setModal(null)
-  useEffect(() => { setStorageSaved(saveDraft({ page, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance })) }, [page, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance])
+  useEffect(() => {
+    if (!accountId && !legacyActive) return
+    setStorageSaved(saveDraft({ page, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance }, accountId ? accountDraftKey(accountId) : undefined))
+  }, [accountId, legacyActive, page, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance])
+  useEffect(() => { setAuthError('') }, [modal?.type])
   useEffect(() => {
     document.title = page === 'welcome' ? 'Carebridge | Nursing home transition planning' : `${headings[page][1]} | Carebridge`
     if (!firstRender.current) { window.scrollTo({ top: 0, behavior: 'instant' }); mainRef.current?.focus({ preventScroll: true }) }
@@ -207,7 +217,7 @@ export default function App() {
       }
     }, 500)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [started, intake.searchLocation])
+  }, [started, intake.searchLocation, accountId])
   // Care explainer, doctor questions, and checklist from the server (AI drafts + rules). Re-run only when answers change.
   useEffect(() => {
     if (!['overview', 'plan'].includes(page) || guidance?.key === backendKey) return undefined
@@ -215,7 +225,7 @@ export default function App() {
     setGuidanceState('loading')
     api.createIntake(backendBody).then((response) => { if (!cancelled) { setGuidance(guidanceFromResponse(backendKey, response)); setGuidanceState('ready') } }).catch(() => { if (!cancelled) setGuidanceState('error') })
     return () => { cancelled = true }
-  }, [page, backendKey])
+  }, [page, backendKey, accountId])
   // Inspection records for the open facility.
   useEffect(() => {
     if (!activeFacility || activeFacility.isFictional || detailTab !== 'Inspection' || facilityDetails[activeFacility.ccn]) return
@@ -228,7 +238,22 @@ export default function App() {
     const dialog = document.querySelector('.preferences-dialog')
     if (dialog) { dialog.scrollTop = 0; dialog.focus({ preventScroll: true }) }
   }, [modal?.type, preferenceStep, confirmPreferences])
+  function restorePlan(draft) {
+    accountEpoch.current += 1
+    setIntake(draft.intake || blankIntake()); setShortlist(draft.shortlist || []); setCompleted(draft.completed || [])
+    setProfile(draft.profile || freshAccountPlan('You').profile); setMembers(draft.members || ['Me', 'Family']); setAssignees(draft.assignees || {})
+    setChosenFacility(draft.chosenFacility || ''); setGuidance(draft.guidance || null); setOnboardingComplete(Boolean(draft.onboardingComplete))
+    setGuidanceState('idle'); setKnowMeState('idle'); setAskState({ ccn: '', question: '', status: 'idle', answer: null })
+    setCatalogState({ source: 'loading', list: [], center: null, resolved: true }); setFacilityDetails({}); setCompare(false); setSort('distance'); setProgram('All sample options')
+    setPlanTab('Checklist'); setDetailTab('Overview'); setPreferenceDraft(null); setPreferenceStep(0); setConfirmPreferences(false); setModal(null)
+  }
+  function signOut() {
+    try { signOutDemoAccount() } catch { setNotice('Your browser could not save the sign-out. Please enable browser storage and try again.'); return }
+    setAccountId(null); setLegacyActive(false); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('Signed out.')
+  }
   function sample() {
+    try { signOutDemoAccount() } catch { /* Viewing an example does not require storage. */ }
+    setAccountId(null); setLegacyActive(false); restorePlan(freshAccountPlan('Maria'))
     setIntake({ ...blankIntake(), ...sampleIntake, coverage: ['Medicare', 'Not sure about other coverage'] })
     setShortlist([]); setCompleted([]); setChosenFacility(''); setAssignees({}); setMembers(['Maria', 'Daniel', 'Family'])
     setProfile({ morning: 'Slow start', interests: ['Music', 'Gardening', 'Being with family'], comforts: ['Family photos', 'Favorite music', 'Knowing the plan'], communication: ['Face me when speaking', 'Give me time to respond'], notes: 'Arthur loves jazz and stories about his garden. A calm explanation before a change of plans helps him feel comfortable.', aiDraft: null })
@@ -239,14 +264,16 @@ export default function App() {
   function patchTask(id, values) { const task = tasks.find((t) => t.id === id); if (task?.apiId && guidanceReady) api.updateTask(task.apiId, values).catch(() => {}) }
   function toggleDone(id) { patchTask(id, { done: !completed.includes(id) }); setCompleted((current) => current.includes(id) ? current.filter((v) => v !== id) : [...current, id]) }
   async function askFacility(facility, question) {
+    const epoch = accountEpoch.current
     const base = { ccn: facility.ccn, question: question.trim() }
     setAskState({ ...base, status: 'loading', answer: null })
-    try { setAskState({ ...base, status: 'ready', answer: await api.askFacility(facility.ccn, base.question) }) } catch { setAskState({ ...base, status: 'error', answer: null }) }
+    try { const answer = await api.askFacility(facility.ccn, base.question); if (epoch === accountEpoch.current) setAskState({ ...base, status: 'ready', answer }) } catch { if (epoch === accountEpoch.current) setAskState({ ...base, status: 'error', answer: null }) }
   }
   async function draftKnowMe() {
     if (!guidance?.planId) return
+    const epoch = accountEpoch.current
     setKnowMeState('loading')
-    try { const data = await api.draftKnowMe(guidance.planId, toKnowMeBody(profile, intake.personName.trim())); setProfile((current) => ({ ...current, aiDraft: data.know_me })); setKnowMeState('ready'); setNotice('Know Me draft ready. Review and edit it before sharing.') } catch { setKnowMeState('error') }
+    try { const data = await api.draftKnowMe(guidance.planId, toKnowMeBody(profile, intake.personName.trim())); if (epoch !== accountEpoch.current) return; setProfile((current) => ({ ...current, aiDraft: data.know_me })); setKnowMeState('ready'); setNotice('Know Me draft ready. Review and edit it before sharing.') } catch { if (epoch === accountEpoch.current) setKnowMeState('error') }
   }
   function download() {
     const data = { title: 'Carebridge transition plan', status: 'Fictional demo draft for family review', intake, facilities: savedHomes, planningFacility: selectedHome || null, checklist: tasks.map((task) => ({ ...task, completed: completed.includes(task.id), assignedTo: assignees[task.id] || 'Unassigned' })), checkedPackingItems: completed.filter((id) => id.startsWith('packing-')), family: members, knowMe: profile }
@@ -255,9 +282,10 @@ export default function App() {
   }
   function auth(e) {
     e.preventDefault(); const data = new FormData(e.currentTarget)
-    const caregiverName = String(data.get('name') || '').trim() || intake.caregiverName || 'You'
-    if (modal.type === 'account') setOnboardingComplete(false)
-    patch({ caregiverName }); setMembers((current) => [...new Set([caregiverName, ...current.filter((member) => member !== 'Me')])]); setModal(null); setPage(modal.type === 'signin' && onboardingComplete ? 'overview' : 'situation'); setNotice('Demo plan opened.')
+    try {
+      const session = modal.type === 'account' ? createDemoAccount(data.get('email'), String(data.get('name') || '')) : signInDemoAccount(data.get('email'))
+      setAccountId(session.accountId); setLegacyActive(false); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); setNotice(modal.type === 'account' ? 'Your new plan is ready. Let’s get started.' : 'Your saved plan is open.')
+    } catch (error) { setAuthError(error.message || 'We couldn’t open this demo plan. Please try again.') }
   }
   function actions(previous, next, label = 'Continue') {
     return <div className="form-actions"><button className="text-button" onClick={() => setPage(previous)}><Icon name="back" size={17} />Back</button><span className="save-hint"><Icon name="shield" size={15} />{storageSaved ? 'Saved on this device' : 'Browser storage unavailable · download your plan'}</span><button className="button primary" onClick={() => { if (next === 'overview') setOnboardingComplete(true); setPage(next) }}>{label}<Icon name="arrow" size={18} /></button></div>
@@ -285,7 +313,7 @@ export default function App() {
       <a className="skip-link" href="#main">Skip to content</a>
       {step < 0 && <aside className="sidebar"><button className="brand" onClick={() => setPage('welcome')} aria-label="Carebridge home"><span className="brand-symbol"><Icon name="bridge" size={28} /></span><span>carebridge</span></button><nav aria-label="Your plan navigation">{nav.map(([id, label, icon]) => <button className={`nav-item ${page === id ? 'active' : ''}`} key={id} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}><span className="nav-icon"><Icon name={icon} size={18} /></span><span>{label}</span></button>)}</nav></aside>}
       <div className="workspace">
-        <header className="workspace-header">{step >= 0 ? <><span className="brand"><Icon name="bridge" size={28} />carebridge</span><span className="onboarding-label">Getting started · Step {step + 1} of 3</span></> : <div className="account-controls"><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={() => { setModal(null); setPage('welcome'); setNotice('Signed out. Your plan is saved on this device.') }} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
+        <header className="workspace-header">{step >= 0 ? <><span className="brand"><Icon name="bridge" size={28} />carebridge</span><span className="onboarding-label">Getting started · Step {step + 1} of 3</span></> : <div className="account-controls"><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
         <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button secondary" onClick={download}><Icon name="download" size={17} />Download plan</button>}</div>
           {step >= 0 && <IntakeProgress step={step} onChange={(i) => setPage(intakeSteps[i][0])} />}
 
@@ -329,9 +357,15 @@ export default function App() {
         {modal.type === 'account' && <label className="text-field">Your first name<input name="name" placeholder="e.g. Maria" required maxLength={50} /></label>}
         <label className="text-field">Demo email<input name="email" type="email" placeholder="maria@example.com" required autoComplete="off" /></label>
         <label className="text-field">Demo password<input name="password" type="password" placeholder="Use any made-up password" required autoComplete="new-password" minLength={4} /></label>
-        <p className="field-hint">Email and password are not saved or sent anywhere. Your sample plan is saved in this browser.</p>
+        <p className="field-hint">Your demo email identifies your saved plan on this device. Passwords are not checked, saved, or sent anywhere. This is a simulated account.</p>
+        {authError && <p className="account-error" role="alert">{authError}</p>}
         <button className="button primary full" type="submit">{modal.type === 'signin' ? 'Open workspace' : 'Create a plan'}<Icon name="arrow" size={17} /></button>
       </form>
+      {loadDraft() && <button className="text-button account-switch" onClick={() => {
+        let previous
+        try { previous = openPreviousDemoPlan() } catch { setAuthError('Your browser could not open the previous plan.'); return }
+        setAccountId(null); setLegacyActive(true); restorePlan(previous); setPage(resumePage(previous))
+      }}>Open the previous unlinked plan on this device</button>}
       <div className="account-divider"><span>or view a completed example</span></div>
       <button className="button secondary full" onClick={sample}>See an example profile.</button>
       <button className="text-button account-switch" onClick={() => setModal({ type: modal.type === 'account' ? 'signin' : 'account' })}>{modal.type === 'account' ? 'Already have a plan? Sign in' : 'New here? Start a plan'}</button>

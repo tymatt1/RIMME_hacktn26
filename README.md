@@ -15,7 +15,9 @@ Open the Local URL printed by Vite. If npm is unavailable but pnpm is installed,
 
 ## Explore the demo
 
-Choose **Create a transition plan**, then **See an example profile.** to load Maria and her grandfather Arthur's example. Or fill in the form to try simulated account creation with invented details. The simulation accepts any valid-format email and a made-up password of four or more characters. Neither is saved or transmitted, and no actual account is created. Demo sign-in opens the browser's existing draft; it does not retrieve an account by email.
+Choose **Create a transition plan**, then enter invented details to start a fresh three-step onboarding flow. Each demo email has its own plan and onboarding progress on this browser and origin. Sign in with an existing demo email to resume that plan; unknown emails and duplicate signups show a message instead of opening another plan. Sign out returns to the welcome screen and stays signed out after refresh. Demo passwords are only simulated form inputs: they are not checked, stored, or sent anywhere. This is browser-local account simulation, not secure authentication.
+
+**See an example profile.** opens Maria and Arthur's example without overwriting a saved account. Earlier drafts created before email-based demo plans remain available through **Open the previous unlinked plan on this device**. Those older signups never saved an email, so they cannot be matched to a sign-in email automatically.
 
 Seven main screens connect the journey:
 
@@ -31,7 +33,7 @@ Large choice controls minimize typing. Keyboard focus, labeled radio groups, dia
 
 ## What is saved
 
-Sample intake answers, current screen, shortlist, checked tasks, family assignments, and Know Me content save in this browser's localStorage under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
+Each demo account saves intake answers, current screen, onboarding progress, shortlist, checked tasks, family assignments, and Know Me content in browser localStorage under a separate `carebridge-demo-plan:` key. The `carebridge-demo-accounts-v1` registry stores demo emails and the active session. The previous unlinked draft remains under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
 
 **Download plan** exports the draft as JSON. The file can be shared manually for review; there is no backend, live AI, invitation system, document upload, or external transmission. Use **See an example profile.** in the welcome screen's start/sign-in dialog to reset to the sample journey. Clear site storage to remove the browser draft completely.
 

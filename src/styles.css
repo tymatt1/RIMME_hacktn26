@@ -1096,3 +1096,4 @@ select { cursor: pointer; }
 .sign-out-action { border-top: 1px solid var(--line); margin-top: 6px; border-radius: 0 0 7px 7px; }
 @media print { .workspace-header { display: none !important; } }
 @media (max-width: 650px) { .profile-dropdown { right: -58px; } }
+.account-error { padding: 12px 14px; border: 1px solid #cb927f; border-radius: 7px; background: #fff2eb; color: #7d3626; font-size: 14px; }
