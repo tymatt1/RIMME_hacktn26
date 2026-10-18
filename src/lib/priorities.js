@@ -2,11 +2,10 @@ export const priorityTopics = [
   'Close to family',
   'Staffing',
   'Inspection information',
-  'Rehabilitation services',
-  'Room preferences',
-  'Language & culture',
   'Costs & coverage',
 ]
+
+export const separatePreferenceTopics = ['Rehabilitation services', 'Room preferences', 'Language & culture']
 
 // Keep existing selections first when upgrading an older pick-three draft.
 export function completePriorityOrder(value) {

@@ -1,5 +1,5 @@
 import { sampleIntake } from '../data/prototype.js'
-import { normalizeBudget, priorityTopics } from './priorities.js'
+import { normalizeBudget, priorityTopics, separatePreferenceTopics } from './priorities.js'
 
 const draftKey = 'carebridge-prototype-v1'
 const pages = new Set(['welcome', 'situation', 'support', 'priorities', 'overview', 'facilities', 'plan'])
@@ -31,6 +31,7 @@ export function blankIntake() {
     knownServices: [],
     coverage: [],
     priorities: [],
+    additionalPriorities: [],
     coordinators: 'Still figuring this out',
     familySupport: [],
   }
@@ -84,6 +85,8 @@ function hydrateIntake(value) {
       defaults[key] = source[key]
     }
   }
+  // Preserve removed ranking topics without inferring answers to the new questions.
+  defaults.additionalPriorities = [...new Set([...stringList(source.additionalPriorities), ...stringList(source.priorities)])].filter((topic) => separatePreferenceTopics.includes(topic))
   return defaults
 }
 
@@ -112,6 +115,7 @@ function hydrateDraft(draft) {
   const assignees = draft.assignees && typeof draft.assignees === 'object' && !Array.isArray(draft.assignees) ? draft.assignees : {}
   return {
     page: pages.has(draft.page) ? draft.page : 'welcome',
+    returnPage: pages.has(draft.returnPage) && draft.returnPage !== 'welcome' ? draft.returnPage : null,
     onboardingComplete: typeof draft.onboardingComplete === 'boolean' ? draft.onboardingComplete : ['overview', 'facilities', 'plan'].includes(draft.page),
     intake: hydrateIntake(draft.intake),
     completed: stringList(draft.completed),

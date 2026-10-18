@@ -60,3 +60,32 @@ test('the previous unlinked plan remains separate from new accounts', () => with
   openPreviousDemoPlan()
   assert.equal(loadDemoSession().draft.intake.personName, 'Legacy relative')
 }))
+
+test('visiting home keeps the active account and restores its plan after sign-out and sign-in', () => withStorage(() => {
+  const session = createDemoAccount('home@example.com', 'Maria')
+  const homeDraft = { ...session.draft, page: 'welcome', returnPage: 'plan', onboardingComplete: true, intake: { ...session.draft.intake, personName: 'Arthur' }, completed: ['packing'] }
+  saveDraft(homeDraft, accountDraftKey(session.accountId))
+  const restored = loadDemoSession()
+  assert.equal(restored.accountId, session.accountId)
+  assert.equal(restored.draft.page, 'welcome')
+  assert.equal(resumePage(restored.draft), 'plan')
+  assert.equal(restored.draft.intake.personName, 'Arthur')
+  assert.deepEqual(restored.draft.completed, ['packing'])
+  signOutDemoAccount()
+  assert.deepEqual(loadDemoSession(), { accountId: null, draft: null })
+  assert.deepEqual(loadDraft(accountDraftKey(session.accountId)).completed, ['packing'])
+  assert.equal(resumePage(signInDemoAccount(session.accountId).draft), 'plan')
+  const other = createDemoAccount('other@example.com', 'Other')
+  assert.equal(resumePage(other.draft), 'situation')
+  assert.deepEqual(other.draft.completed, [])
+}))
+
+test('home remembers incomplete onboarding and validates stale return pages', () => withStorage(() => {
+  const session = createDemoAccount('setup@example.com', 'Setup')
+  saveDraft({ ...session.draft, page: 'welcome', returnPage: 'support' }, accountDraftKey(session.accountId))
+  assert.equal(resumePage(loadDemoSession().draft), 'support')
+  saveDraft({ ...session.draft, page: 'welcome', returnPage: 'invalid' }, accountDraftKey(session.accountId))
+  assert.equal(resumePage(loadDemoSession().draft), 'situation')
+  assert.equal(resumePage({ page: 'welcome', returnPage: 'support', onboardingComplete: true }), 'overview')
+  assert.equal(resumePage({ page: 'welcome', returnPage: 'plan', onboardingComplete: false }), 'situation')
+}))

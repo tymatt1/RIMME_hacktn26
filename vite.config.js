@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [react()],
+    optimizeDeps: { include: ['pdfmake/build/pdfmake.js', 'pdfmake/build/vfs_fonts.js'] },
     server: { proxy: { '/api': { target, changeOrigin: true, rewrite: (path) => path.replace(/^\/api/, '') } } },
     preview: { proxy: { '/api': { target, changeOrigin: true, rewrite: (path) => path.replace(/^\/api/, '') } } },
   }

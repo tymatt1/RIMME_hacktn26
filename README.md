@@ -24,10 +24,10 @@ Seven main screens connect the journey:
 1. Welcome and simulated account creation/sign-in.
 2. Your situation: relationship, current living setting, timing, hospital context.
 3. Everyday support: mobility, daily activities, memory, communication.
-4. Family priorities: location, travel range, monthly out-of-pocket budget, coverage categories, draggable priority ranking, family support. Reorder with a mouse, touch grip, arrow buttons, or keyboard Up/Down/Home/End on a grip. The budget is optional ($0–$20,000/month in $500 steps) and does not filter fictional facilities or estimate actual prices. Both preferences appear in the draft/export; the starting-point summary shows the top three priorities in order.
+4. Family priorities: location, travel range, monthly out-of-pocket budget, coverage categories, and family support. Rank four topics: proximity to family, staffing, inspection information, and costs/coverage. Rehabilitation, room type, and language/cultural needs use separate questions. Dragging shows a floating block and moving drop gap; mouse, touch grips, arrow buttons, and keyboard Up/Down/Home/End work. Escape cancels a drag. Older removed ranking topics remain noted without guessing answers to the new questions. The budget is optional ($0–$20,000/month in $500 steps) and does not filter facilities or estimate actual prices. Answers appear in the draft/export; the starting-point summary shows the top three priorities in order.
 5. Starting point: editable answers, care-setting discussion prompts, care-team questions.
 6. Nursing home exploration: four fictional facilities, filters, sorting, saved shortlist, side-by-side comparison, detail/inspection/call-question panels.
-7. Transition Plan: personalized checklist, task assignments, documents/packing, family members, editable Know Me profile, downloadable JSON.
+7. Transition Plan: personalized checklist, task assignments, documents/packing, family members, editable Know Me profile, and branded PDF downloads.
 
 Large choice controls minimize typing. Keyboard focus, labeled radio groups, dialog focus management, reduced-motion support, and responsive layouts are included. Preferences inform the draft plan; no care level or coverage eligibility is determined. Facility options have no composite match score or best-home ranking. A chosen facility is a planning reference only, with no booking or admission.
 
@@ -35,7 +35,7 @@ Large choice controls minimize typing. Keyboard focus, labeled radio groups, dia
 
 Each demo account saves intake answers, current screen, onboarding progress, shortlist, checked tasks, family assignments, and Know Me content in browser localStorage under a separate `carebridge-demo-plan:` key. The `carebridge-demo-accounts-v1` registry stores demo emails and the active session. The previous unlinked draft remains under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
 
-**Download plan** exports the draft as JSON. The file can be shared manually for review; there is no backend, live AI, invitation system, document upload, or external transmission. Use **See an example profile.** in the welcome screen's start/sign-in dialog to reset to the sample journey. Clear site storage to remove the browser draft completely.
+**Download plan (PDF)** creates a formatted Carebridge report with recorded preferences, ranked priorities, checklist status and assignments, packing progress, saved facilities, and the Know Me profile. **Download Know Me PDF** creates a separate resident profile for review with staff. Reports are generated in the browser with bundled fonts; exporting does not send report data to an external service. PDF generation loads only when a download is requested. Clear site storage to remove the browser draft completely.
 
 ## Checks and production build
 
@@ -60,6 +60,9 @@ src/
   data/prototype.js          Clearly fictional demo fixtures and copy
   lib/demo-model.js          Personalization adapter, filters, local persistence
   lib/demo-model.test.js     Data and storage regression tests
+  lib/plan-document.js       Branded PDF layouts and recorded report content
+  lib/plan-document.test.js  PDF content, privacy boundaries, and filename tests
+  lib/plan-pdf.js            Lazy browser PDF generation and download
   lib/plan.js                Team starter's checklist personalization
   lib/plan.test.js           Existing checklist regression test
 ```

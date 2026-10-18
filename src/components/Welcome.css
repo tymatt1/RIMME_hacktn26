@@ -4,7 +4,8 @@
 .welcome-page button:focus-visible,.welcome-page a:focus-visible{outline:3px solid #af704f;outline-offset:5px}
 .welcome-skip{position:fixed;top:-100px;left:20px;background:var(--w-ink);color:white;padding:12px 18px;border-radius:6px;z-index:100}
 .welcome-skip:focus{top:15px}
-.welcome-header{max-width:1480px;margin:0 auto;padding:29px 64px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.welcome-header{position:relative;z-index:5;max-width:1480px;margin:0 auto;padding:29px 64px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.welcome-header .profile-dropdown{right:0}
 .welcome-brand{display:flex;align-items:center;gap:12px;font-size:30px;font-weight:650;letter-spacing:-1.4px;line-height:1}
 .welcome-brand-mark{width:43px;height:43px}
 .welcome-brand-dot{color:#b57f61}

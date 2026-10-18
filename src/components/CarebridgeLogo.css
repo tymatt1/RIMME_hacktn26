@@ -1,0 +1,10 @@
+.carebridge-logo { display: inline-flex; align-items: center; flex-shrink: 0; gap: 12px; min-height: 44px; margin: 0; padding: 0; border: 0; background: transparent; color: #174d43; font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif; font-size: 30px; font-weight: 650; letter-spacing: -1.4px; line-height: 1; text-align: left; white-space: nowrap; }
+.carebridge-logo .carebridge-logo-mark { display: block; width: 43px; height: 43px; flex-shrink: 0; }
+.carebridge-logo-dot { color: #b57f61; }
+@media (max-width: 1200px) {
+  .carebridge-logo { gap: 9px; font-size: 27px; }
+  .carebridge-logo .carebridge-logo-mark { width: 37px; height: 37px; }
+}
+@media (max-width: 600px) {
+  .carebridge-logo .carebridge-logo-mark { width: 35px; height: 35px; }
+}

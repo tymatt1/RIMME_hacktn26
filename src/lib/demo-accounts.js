@@ -45,8 +45,9 @@ export function signOutDemoAccount() {
   window.localStorage.setItem(accountsKey, JSON.stringify({ ...saved, active: null }))
 }
 export function resumePage(draft) {
-  if (draft.onboardingComplete) return ['overview', 'facilities', 'plan'].includes(draft.page) ? draft.page : 'overview'
-  return ['situation', 'support', 'priorities'].includes(draft.page) ? draft.page : 'situation'
+  const page = draft.page === 'welcome' ? draft.returnPage : draft.page
+  if (draft.onboardingComplete) return ['overview', 'facilities', 'plan'].includes(page) ? page : 'overview'
+  return ['situation', 'support', 'priorities'].includes(page) ? page : 'situation'
 }
 
 export function openPreviousDemoPlan() {

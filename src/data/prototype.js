@@ -42,7 +42,11 @@ export const sampleIntake = {
   travelMiles: 15,
   monthlyBudget: null,
   coverage: ['Not sure'],
-  priorities: ['Close to family', 'Staffing', 'Rehabilitation services'],
+  priorities: ['Close to family', 'Staffing', 'Inspection information', 'Costs & coverage'],
+  rehabilitationPreference: 'Not sure',
+  roomPreference: 'Not sure',
+  facilityPreferences: [],
+  additionalPriorities: ['Rehabilitation services'],
   coordinators: 'Several relatives',
   familySupport: ['Calls', 'Transportation', 'Packing'],
 };

@@ -7,6 +7,8 @@ dist/
 *.log
 .DS_Store
 .npm-cache/
+/output/pdf/
+/tmp/pdfs/
 work/
 .openai/
 outputs/

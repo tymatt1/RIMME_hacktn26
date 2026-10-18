@@ -1,13 +1,5 @@
 import './Welcome.css'
-
-function BridgeMark({ className = '' }) {
-  return (
-    <svg className={className} viewBox="0 0 36 36" fill="none" aria-hidden="true">
-      <path d="M4 24V13M32 24V13M4 18C11 18 10 8 18 8S25 18 32 18M4 24H32M10 24V16M18 24V9M26 24V16" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M3 29H33" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
-    </svg>
-  )
-}
+import CarebridgeLogo, { BridgeMark } from './CarebridgeLogo.jsx'
 
 function Arrow({ diagonal = false }) {
   return <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={diagonal ? 'M6 18 18 6M6 6h12v12' : 'M4 12h15m-6-6 6 6-6 6'} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -93,13 +85,13 @@ const steps = [
   { number: '03', title: 'Prepare for move-in', detail: 'Assign tasks and prepare a profile of the person moving into care.' },
 ]
 
-export default function Welcome({ onStart, onSignIn }) {
+export default function Welcome({ onStart, onSignIn, accountControls, onResume, resumeLabel = 'Open my plan' }) {
   return (
     <div className="welcome-page">
       <a className="welcome-skip" href="#welcome-main">Skip to content</a>
       <header className="welcome-header">
-        <div className="welcome-brand" aria-label="Carebridge"><BridgeMark className="welcome-brand-mark" /><span>carebridge<span className="welcome-brand-dot">.</span></span></div>
-        <div className="welcome-header-actions"><button type="button" className="welcome-signin" onClick={onSignIn}>Sign in <Arrow diagonal /></button></div>
+        <CarebridgeLogo />
+        <div className="welcome-header-actions">{accountControls || <button type="button" className="welcome-signin" onClick={onSignIn}>Sign in <Arrow diagonal /></button>}</div>
       </header>
 
       <main id="welcome-main" className="welcome-main" tabIndex={-1}>
@@ -108,7 +100,7 @@ export default function Welcome({ onStart, onSignIn }) {
             <h1 id="welcome-title">Plan a move to a<br /><em>nursing home.</em></h1>
             <p className="welcome-description">When a family member needs nursing home care, there’s a lot to work out. Carebridge helps you compare homes and keep track of what needs to happen before move-in.</p>
             <div className="welcome-buttons">
-              <button type="button" className="welcome-start" onClick={onStart}>Create a transition plan <Arrow /></button>
+              <button type="button" className="welcome-start" onClick={onResume || onStart}>{onResume ? resumeLabel : 'Create a transition plan'} <Arrow /></button>
             </div>
           </div>
 
