@@ -15,13 +15,13 @@ export function ScoreGauge({ value, size = 76 }) {
 }
 
 // Top of a live facility card: the score, its rank among the homes shown, and a plain-words label.
-export function ScoreHeader({ f, rank, total }) {
+export function ScoreHeader({ f, rank, total, moved = 0 }) {
   if (f.match === null || f.match === undefined) {
     return <div className="score-header match-none"><span className="score-unscored" aria-hidden="true">–</span><div><strong>Not scored</strong><span>Too little CMS data to score this home. Read its ratings and ask the home.</span></div></div>
   }
   return <div className={`score-header match-${scoreTone(f.match)}`}>
     <ScoreGauge value={f.match} />
-    <div><strong>Match score{rank ? <span className="rank-pill">#{rank} of {total}</span> : null}</strong><span>{toneWord[scoreTone(f.match)]} for your needs</span></div>
+    <div><strong>Match score{rank ? <span className="rank-pill">#{rank} of {total}</span> : null}{moved ? <span className={`rank-move ${moved > 0 ? 'up' : 'down'}`} title="Compared with the order before your last update" aria-label={`${moved > 0 ? 'Moved up' : 'Moved down'} ${Math.abs(moved)} since your last update`}>{moved > 0 ? `Up ${moved}` : `Down ${-moved}`}</span> : null}</strong><span>{toneWord[scoreTone(f.match)]} for your needs</span></div>
   </div>
 }
 
@@ -37,16 +37,17 @@ export function StrengthWatch({ f }) {
 }
 
 // Above the results: what counts most for THIS family, in percent, and how the score is built.
-export function ScoreBanner({ shares, name, reasons }) {
+export function ScoreBanner({ shares, name, reasons, children }) {
   return <section className="panel score-banner" aria-label="How homes are ranked">
     <div className="score-banner-head"><div><h2>Ranked for {name}</h2></div></div>
     <div className="weight-bar" role="img" aria-label={`What counts most: ${shares.map((s) => `${s.label} ${s.pct} percent`).join(', ')}`}>{shares.map((s) => <span key={s.key} className={`w-${s.key}`} style={{ flex: s.pct }} title={`${s.label} ${s.pct}%`} />)}</div>
     <ul className="weight-legend">{shares.map((s) => <li key={s.key}><i className={`w-${s.key}`} />{s.label} <b>{s.pct}%</b></li>)}</ul>
+    {children}
     <details className="score-explainer"><summary>How is the score calculated?</summary>
       {reasons.length > 0 && <ul className="score-reasons">{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
       <ol>
         <li>Each part is scored 0–100 from CMS data: inspection stars, nurse staffing (against the hours this person needs), quality stars, safety record (serious citations, fines, flags) and distance (against your travel range).</li>
-        <li>Parts are averaged using the weights above. A part CMS has no data for is left out, never counted as zero.</li>
+        <li>Parts are averaged using the weights above, which come from your priority sliders. A part CMS has no data for is left out, never counted as zero.</li>
         <li>A home with fewer than three CMS parts shows “Not scored”.</li>
       </ol>
       <p className="field-hint">The score summarizes public CMS data. It is not medical advice or a guarantee of care. CMS has no data on memory-care units, languages, room types or Medicaid acceptance, so ask each home.</p>

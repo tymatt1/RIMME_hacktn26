@@ -2,6 +2,7 @@
  * Carebridge prototype content. Every person, facility, rating, and metric here
  * is invented for the interactive demo. This module makes no live requests.
  */
+import { prioritiesAreUntouched, rankPriorities } from '../lib/priorities.js';
 
 export const demoNotice = {
   short: 'Interactive demo · fictional people and facilities',
@@ -42,7 +43,7 @@ export const sampleIntake = {
   travelMiles: 15,
   monthlyBudget: null,
   coverage: ['Not sure'],
-  priorities: ['Close to family', 'Staffing', 'Inspection information', 'Costs & coverage'],
+  priorityWeights: { 'Close to family': 60, 'Staffing': 80, 'Inspection information': 70, 'Quality of care': 50, 'Costs & coverage': 50 },
   rehabilitationPreference: 'Not sure',
   roomPreference: 'Not sure',
   facilityPreferences: [],
@@ -183,7 +184,8 @@ export const knowMePrompts = [
 export function buildCareSummary(intake = {}) {
   const name = intake.personName?.trim() || 'Your family member';
   const currentSetting = intake.currentSetting || 'Not yet selected';
-  const priorities = Array.isArray(intake.priorities) ? intake.priorities : [];
+  const budgetNote = typeof intake.monthlyBudget === 'number' ? ` Monthly out-of-pocket budget: $${intake.monthlyBudget.toLocaleString('en-US')}.` : '';
+  const priorities = intake.priorityWeights && !prioritiesAreUntouched(intake.priorityWeights) ? rankPriorities(intake.priorityWeights) : [];
   const hospital = currentSetting === 'Hospital';
   const dailySupport = Object.entries(intake.dailySupport || {})
     .filter(([, level]) => level === 'Some help' || level === 'Substantial help')
@@ -202,8 +204,8 @@ export function buildCareSummary(intake = {}) {
       ? `You recorded a need for help with ${dailySupport.join(', ')}. Ask the care team what support the nursing home would need to provide.`
       : 'You haven’t recorded specific daily support needs. You can update the intake after speaking with the care team.',
     prioritiesSummary: priorities.length
-      ? `Your top priorities, in order: ${priorities.slice(0, 3).map((item, index) => `${index + 1}. ${item.toLowerCase()}`).join('; ')}.${typeof intake.monthlyBudget === 'number' ? ` Monthly out-of-pocket budget: $${intake.monthlyBudget.toLocaleString('en-US')}.` : ''}`
-      : `Rank your priorities to help guide conversations.${typeof intake.monthlyBudget === 'number' ? ` Monthly out-of-pocket budget: $${intake.monthlyBudget.toLocaleString('en-US')}.` : ''}`,
+      ? `What matters most to you, in order: ${priorities.slice(0, 3).map((item, index) => `${index + 1}. ${item.toLowerCase()}`).join('; ')}.${budgetNote}`
+      : `Use the priority sliders to show what matters most.${budgetNote}`,
     questions: [...careQuestions.general, ...(hospital ? careQuestions.hospital : careQuestions.home)],
     note: 'This summary reflects the answers in the demo. It does not determine eligibility, coverage, or the right level of care.',
   };

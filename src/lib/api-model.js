@@ -1,3 +1,4 @@
+import { normalizePriorityWeights, prioritiesAreUntouched, rankPriorities, scoredPriorityTopics } from './priorities.js'
 // Pure adapters between the app's UI model and the backend API. No network, no React.
 
 const acronyms = new Set(['LLC', 'LP', 'LLP', 'INC', 'II', 'III', 'IV', 'TN', 'CM', 'OPCO', 'ALF', 'LTC', 'SNF', 'HCC', 'USA'])
@@ -170,7 +171,8 @@ export const knowMeSections = [
 // ---- Match score (0-100) -------------------------------------------------------------------
 // The server returns four 0-100 components built from CMS fields (generic, same for everyone).
 // Here the score is re-fit to THIS person: how much care they need sets the staffing a home must show,
-// the travel range sets what "close" means, and the ranked priorities set what counts most.
+// the travel range sets what "close" means, and the family's priority sliders (0-100) set what counts most.
+// No percentages are fixed: every weight comes from a slider, so moving a slider re-ranks the homes.
 // Missing CMS data is left out, never counted as zero.
 export const scoreComponents = [
   ['inspections', 'Inspection results', 'CMS health inspection stars'],
@@ -179,8 +181,8 @@ export const scoreComponents = [
   ['safety', 'Safety record', 'Serious citations (severity G or higher), immediate jeopardy, fines, abuse icon, special focus'],
   ['distance', 'Distance', 'Straight-line miles from your search area'],
 ]
-const baseWeights = { inspections: 0.30, staffing: 0.25, quality: 0.25, safety: 0.20, distance: 0.10 }
-const boosts = [2, 1.6, 1.3]
+// Used only when every slider is at 0, or a home has data for nothing the family cares about: count parts equally.
+const equalWeights = { inspections: 0.6, safety: 0.4, staffing: 1, quality: 1, distance: 1 }
 const clip = (value) => Math.max(0, Math.min(100, value))
 
 export const notMatched = 'CMS has no data on memory-care units, languages, room types, or whether a home accepts Medicaid, so those are not in the score. Ask each home.'
@@ -209,18 +211,20 @@ export function needsProfile(intake = {}) {
   }
 }
 
-// Ranked priorities count more, and so does staffing when the person needs more hands-on care.
-export function scoreWeights(order = [], needs = null) {
-  const weights = { ...baseWeights }
-  const topics = Array.isArray(order) ? order.slice(0, boosts.length) : []
-  topics.forEach((topic, index) => {
-    const boost = boosts[index]
-    if (topic === 'Staffing') weights.staffing *= boost
-    else if (topic === 'Inspection information') { weights.inspections *= boost; weights.safety *= boost }
-    else if (topic === 'Close to family') weights.distance *= boost
-  })
-  if (needs?.points) weights.staffing *= 1 + 0.12 * needs.points
-  return weights
+// Each slider sets the weight of the part(s) of the score it controls:
+//   Close to family -> distance, Staffing -> staffing, Quality of care -> quality measures,
+//   Inspection information -> inspection results (60%) and safety record (40%).
+// Staffing also counts more when the person needs more hands-on care. Costs & coverage is not in the score (CMS has no data).
+export function scoreWeights(priorityWeights, needs = null) {
+  const p = normalizePriorityWeights(priorityWeights)
+  const weights = {
+    inspections: 0.6 * p['Inspection information'],
+    safety: 0.4 * p['Inspection information'],
+    staffing: p['Staffing'] * (1 + 0.12 * (needs?.points || 0)),
+    quality: p['Quality of care'],
+    distance: p['Close to family'],
+  }
+  return Object.values(weights).every((weight) => weight === 0) ? { ...equalWeights } : weights
 }
 
 // 100 at 0 miles down to 0 at the family's travel range (default 50).
@@ -238,16 +242,23 @@ function staffingFit(f, needs) {
   return bits.reduce((sum, [w, v]) => sum + w * v, 0) / bits.reduce((sum, [w]) => sum + w, 0)
 }
 
-export function scoreReasons(needs, priorities) {
+export function scoreReasons(needs, priorityWeights) {
   const reasons = []
   if (needs?.reasons.length) reasons.push(`Staffing is measured against ${needs.targetHours} nurse hours a day and counts more, because of: ${needs.reasons.join('; ')}.`)
-  const ranked = (Array.isArray(priorities) ? priorities : []).filter((topic) => ['Close to family', 'Staffing', 'Inspection information'].includes(topic)).slice(0, 3)
-  if (ranked.length) reasons.push(`Your ranked priorities count more: ${ranked.join(', ').toLowerCase()}.`)
+  const p = normalizePriorityWeights(priorityWeights)
+  if (prioritiesAreUntouched(p)) {
+    reasons.push('Your priority sliders are all at the same level, so each part of the score counts about equally. Move a slider to change what counts most.')
+  } else {
+    const ordered = rankPriorities(p).filter((topic) => scoredPriorityTopics.includes(topic))
+    if (ordered.length) reasons.push(`Your sliders set the weights. Counted most: ${ordered.slice(0, 3).join(', ').toLowerCase()}.`)
+    const off = scoredPriorityTopics.filter((topic) => p[topic] === 0)
+    if (off.length) reasons.push(`Set to “not important” and left out: ${off.join(', ').toLowerCase()}.`)
+  }
   return reasons
 }
 
 // -> { match: integer 0-100 | null, matchParts: [{ key, label, note, value, weight }], matchReasons: [string] }
-export function matchScore(f, weights = baseWeights, ctx = {}) {
+export function matchScore(f, weights = equalWeights, ctx = {}) {
   if (f.score === null || f.score === undefined) return { match: null, matchParts: [], matchReasons: [] }
   const needs = ctx.needs
   const values = { ...f.scoreParts, distance: distanceScore(f.distance, ctx.travelMiles) }
@@ -259,11 +270,13 @@ export function matchScore(f, weights = baseWeights, ctx = {}) {
   }
   if (f.distance !== null && f.distance !== undefined && Number(ctx.travelMiles) > 0) notes.distance = `${f.distance} miles away, out of your ${ctx.travelMiles}-mile range (0 miles = 100, at the limit = 0)`
   const present = scoreComponents.filter(([key]) => values[key] !== null && values[key] !== undefined)
-  const total = present.reduce((sum, [key]) => sum + weights[key], 0)
-  if (!total) return { match: null, matchParts: [], matchReasons: [] }
-  const match = Math.round(present.reduce((sum, [key]) => sum + weights[key] * values[key], 0) / total)
-  const matchParts = present.map(([key, label, note]) => ({ key, label, note: notes[key] || note, value: Math.round(values[key]), weight: Math.round((weights[key] / total) * 100) }))
-  return { match, matchParts, matchReasons: scoreReasons(needs, ctx.priorities) }
+  if (!present.length) return { match: null, matchParts: [], matchReasons: [] }
+  // If the family gave every available part a weight of 0, fall back to counting the available parts equally.
+  const used = present.some(([key]) => weights[key] > 0) ? weights : equalWeights
+  const total = present.reduce((sum, [key]) => sum + used[key], 0)
+  const match = Math.round(present.reduce((sum, [key]) => sum + used[key] * values[key], 0) / total)
+  const matchParts = present.map(([key, label, note]) => ({ key, label, note: notes[key] || note, value: Math.round(values[key]), weight: Math.round((used[key] / total) * 100) }))
+  return { match, matchParts, matchReasons: scoreReasons(needs, ctx.priorityWeights) }
 }
 
 export const scoreTone = (match) => (match === null || match === undefined ? 'none' : match >= 75 ? 'high' : match >= 55 ? 'mid' : 'low')
@@ -271,8 +284,9 @@ export const scoreTone = (match) => (match === null || match === undefined ? 'no
 // Percent each part counts for this family (what the results banner shows). Distance only counts when we know where they are looking.
 export function weightShares(weights, { distance = true } = {}) {
   const parts = scoreComponents.filter(([key]) => distance || key !== 'distance')
-  const total = parts.reduce((sum, [key]) => sum + weights[key], 0)
-  const shares = parts.map(([key, label]) => ({ key, label, pct: Math.round((weights[key] / total) * 100) }))
+  const used = parts.some(([key]) => weights[key] > 0) ? weights : equalWeights
+  const total = parts.reduce((sum, [key]) => sum + used[key], 0)
+  const shares = parts.map(([key, label]) => ({ key, label, pct: Math.round((used[key] / total) * 100) }))
   const drift = 100 - shares.reduce((sum, s) => sum + s.pct, 0)
   shares.sort((a, b) => b.pct - a.pct)
   shares[0].pct += drift

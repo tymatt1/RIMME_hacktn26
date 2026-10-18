@@ -35,3 +35,12 @@ test('empty fields are explicit and filenames are safe', () => {
   assert.equal(planPdfFilename('Renée / Morgan'), 'carebridge-renee-morgan-transition-plan.pdf')
   assert.equal(planPdfFilename('', 'know-me'), 'carebridge-know-me-profile.pdf')
 })
+
+test('PDF lists each priority slider with its importance, and says so when none were recorded', () => {
+  const content = JSON.stringify(createPlanDocument({ intake: { ...sampleIntake, personName: 'Arthur' } }).content)
+  assert.match(content, /What matters most/)
+  assert.match(content, /Very important \(80\)/)
+  assert.match(content, /Costs & coverage/)
+  const bare = JSON.stringify(createPlanDocument({ intake: { personName: 'Arthur' } }).content)
+  assert.match(bare, /No priorities have been recorded/)
+})

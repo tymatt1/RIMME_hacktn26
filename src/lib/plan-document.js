@@ -1,5 +1,6 @@
 import { bridgeMarkSvg } from './brand.js'
 import { packingGroups } from '../data/packing.js'
+import { importanceLabel, normalizePriorityWeights, priorityTopics } from './priorities.js'
 
 const ink = '#174d43'
 const muted = '#596658'
@@ -64,6 +65,7 @@ function knowMeContent(name, profile = {}, startPage = false, includeHeading = t
 /** Pure report definition. It includes recorded facts, without generating new advice. */
 export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new Date() } = {}) {
   const intake = data.intake || {}
+  const priorityWeights = normalizePriorityWeights(intake.priorityWeights)
   const name = clean(intake.personName) || 'Resident name not recorded'
   const isProfile = kind === 'know-me'
   const title = isProfile ? 'Know Me Profile' : 'Nursing Home Transition Plan'
@@ -98,10 +100,10 @@ export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new
         row('Coverage recorded', intake.coverage), row('Rehabilitation recommended', intake.rehabilitationPreference), row('Room preference', intake.roomPreference),
         row('Language or cultural needs', intake.facilityPreferences), row('Coordination', intake.coordinators), row('Available family help', intake.familySupport),
       ]),
-      heading('Priority order'),
-      data.intake?.priorities?.length
-        ? records(['Rank', 'Priority'], intake.priorities.map((priority, index) => [String(index + 1), clean(priority)]), [38, '*'])
-        : paragraph('No priority order has been recorded.'),
+      heading('What matters most'),
+      data.intake?.priorityWeights
+        ? records(['Priority', 'How much it matters (0–100)'], priorityTopics.map((topic) => [clean(topic), `${importanceLabel(priorityWeights[topic])} (${priorityWeights[topic]})`]), ['*', 150])
+        : paragraph('No priorities have been recorded.'),
       ...(intake.additionalPriorities?.length ? [paragraph(`Other topics previously marked important: ${list(intake.additionalPriorities)}.`)] : []),
       heading('Move-in checklist', true),
       paragraph(`${tasks.filter((task) => task.completed).length} of ${tasks.length} recorded tasks completed.`),

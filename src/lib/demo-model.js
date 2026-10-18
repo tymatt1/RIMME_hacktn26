@@ -1,5 +1,5 @@
 import { sampleIntake } from '../data/prototype.js'
-import { normalizeBudget, priorityTopics, separatePreferenceTopics } from './priorities.js'
+import { defaultPriorityWeights, normalizeBudget, normalizePriorityWeights, separatePreferenceTopics } from './priorities.js'
 
 const draftKey = 'carebridge-prototype-v1'
 const pages = new Set(['welcome', 'situation', 'support', 'priorities', 'overview', 'facilities', 'plan'])
@@ -30,7 +30,7 @@ export function blankIntake() {
     communication: [],
     knownServices: [],
     coverage: [],
-    priorities: [],
+    priorityWeights: defaultPriorityWeights(),
     additionalPriorities: [],
     coordinators: 'Still figuring this out',
     familySupport: [],
@@ -74,8 +74,8 @@ function hydrateIntake(value) {
       defaults.dailySupport = Object.fromEntries(Object.entries(fallback).map(([activity, defaultLevel]) => [activity, typeof source.dailySupport?.[activity] === 'string' ? source.dailySupport[activity] : defaultLevel]))
     } else if (key === 'monthlyBudget') {
       defaults[key] = normalizeBudget(source[key])
-    } else if (key === 'priorities') {
-      defaults[key] = stringList(source[key]).filter((topic) => priorityTopics.includes(topic))
+    } else if (key === 'priorityWeights') {
+      defaults[key] = normalizePriorityWeights(source.priorityWeights, source.priorities)
     } else if (Array.isArray(fallback)) {
       defaults[key] = stringList(source[key])
     } else if (key === 'travelMiles') {

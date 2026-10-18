@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Welcome from './components/Welcome.jsx'
 import CarebridgeLogo, { BridgeMark } from './components/CarebridgeLogo.jsx'
 import { packingGroups } from './data/packing.js'
-import PriorityRanking from './components/PriorityRanking.jsx'
+import { PrioritySliders, PriorityTuner } from './components/PrioritySliders.jsx'
 import FacilityComparison from './components/FacilityComparison.jsx'
 import CostPreference from './components/CostPreference.jsx'
 import Icon from './components/Icon.jsx'
@@ -10,6 +10,7 @@ import { facilities, sampleIntake, buildCareSummary, careQuestions, knowMePrompt
 import { buildTasks } from './lib/plan.js'
 import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './lib/demo-model.js'
 import { api } from './lib/api.js'
+import { normalizePriorityWeights } from './lib/priorities.js'
 import { accountDraftKey, createDemoAccount, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount } from './lib/demo-accounts.js'
 import { facilityFromApi, guidanceFromResponse, intakeKey, toBackendIntake, toKnowMeBody, categoryLabels, liveFilters, knowMeSections, scoreWeights, matchScore, needsProfile, weightShares, scoreReasons } from './lib/api-model.js'
 import { LiveOverview, LiveInspection } from './components/FacilityLive.jsx'
@@ -108,7 +109,7 @@ function IntakeWorkflow({ page, intake, patch, actions, editing = false }) {
               <Field title="Has the care team recommended rehabilitation?" hint={intake.additionalPriorities?.includes('Rehabilitation services') ? 'Previously marked important. Confirm the need with the care team.' : undefined}><Choices name="rehabilitation-preference" options={['Yes', 'No', 'Not sure']} value={intake.rehabilitationPreference} onChange={(value) => patch({ rehabilitationPreference: value })} compact /></Field>
               <Field title="What type of room would they prefer?" hint={intake.additionalPriorities?.includes('Room preferences') ? 'Previously marked important.' : undefined}><Choices name="room-preference" options={['Private room', 'Shared room', 'No preference', 'Not sure']} value={intake.roomPreference} onChange={(value) => patch({ roomPreference: value })} compact /></Field>
               <Field title="Any language or cultural needs for the facility?" hint={intake.additionalPriorities?.includes('Language & culture') ? 'Previously marked important. Choose any that apply.' : 'Optional. Choose any that apply; spoken language is recorded in Everyday support.'}><Choices name="facility-preferences" options={['Staff who speak their language', 'Interpreter access', 'Religious or cultural practices', 'Food preferences']} multiple value={intake.facilityPreferences} onChange={(value) => patch({ facilityPreferences: value })} compact /></Field>
-              <Field title="Rank your top priorities" hint="Put these four topics in order, from most to least important."><PriorityRanking value={intake.priorities} onChange={(value) => patch({ priorities: value })} /></Field>
+              <Field title="How much does each of these matter to your family?" hint="Slide toward “Very important” for what matters most. This sets how homes are ranked for you, and you can change it later while looking at results."><PrioritySliders value={intake.priorityWeights} onChange={(topic, value) => patch({ priorityWeights: { ...normalizePriorityWeights(intake.priorityWeights), [topic]: value } })} /></Field>
               <Field title="Who’s helping coordinate?"><Choices name="coordinators" options={['Just me', 'Several relatives', 'Friends or other supporters', 'Still figuring this out']} value={intake.coordinators} onChange={(v) => patch({ coordinators: v })} compact /></Field>
               <Field title="What could your support network help with?" hint="Optional. Assign tasks in your plan later."><Choices name="familySupport" options={['Calls', 'Facility visits', 'Paperwork', 'Packing', 'Transportation']} multiple value={intake.familySupport} onChange={(v) => patch({ familySupport: v })} compact /></Field>
               {actions('support', 'overview', 'See your starting point')}
@@ -172,6 +173,9 @@ export default function App() {
   const [guidance, setGuidance] = useState(stored?.guidance || null)
   const [guidanceState, setGuidanceState] = useState('idle')
   const [catalogState, setCatalogState] = useState({ source: 'loading', list: [], center: null, resolved: true })
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const [rankShift, setRankShift] = useState(null)
   const [facilityDetails, setFacilityDetails] = useState({})
   const [askState, setAskState] = useState({ ccn: '', question: '', status: 'idle', answer: null })
   const [knowMeState, setKnowMeState] = useState('idle')
@@ -191,8 +195,8 @@ export default function App() {
   const step = ['situation', 'support', 'priorities'].indexOf(page)
   const live = catalogState.source === 'live'
   const needs = needsProfile(intake)
-  const weights = scoreWeights(intake.priorities, needs)
-  const scoreContext = { needs, travelMiles: intake.travelMiles, priorities: intake.priorities }
+  const weights = scoreWeights(intake.priorityWeights, needs)
+  const scoreContext = { needs, travelMiles: intake.travelMiles, priorityWeights: intake.priorityWeights }
   const catalog = live ? catalogState.list.map((f) => ({ ...f, ...matchScore(f, weights, scoreContext) })) : facilities
   const effectiveSort = live || sort !== 'score' ? sort : 'distance'
   const selectedHome = catalog.find((f) => f.id === chosenFacility)
@@ -200,6 +204,15 @@ export default function App() {
   const shares = weightShares(weights, { distance: live && catalogState.resolved })
   const rankIds = live ? [...listed].filter((f) => f.match !== null).sort((a, b) => b.match - a.match || a.name.localeCompare(b.name)).map((f) => f.id) : []
   const savedHomes = catalog.filter((f) => shortlist.includes(f.id))
+  // Apply new priority sliders from the results tab: remember today's order, reload the homes, then re-rank.
+  const applyPriorities = (next) => {
+    setRankShift({ ranks: Object.fromEntries(rankIds.map((id, index) => [id, index + 1])), travelMiles: intake.travelMiles, searchLocation: intake.searchLocation })
+    patch({ priorityWeights: next })
+    setRefreshKey((key) => key + 1)
+    setNotice('Results updated for your new priorities.')
+  }
+  const rankShiftValid = rankShift && rankShift.travelMiles === intake.travelMiles && rankShift.searchLocation === intake.searchLocation
+  const movedFor = (id) => { const before = rankShiftValid ? rankShift.ranks[id] : 0; const now = rankIds.indexOf(id) + 1; return before && now ? before - now : 0 }
   const activeFacility = modal?.type === 'facility' ? catalog.find((f) => f.id === modal.id) : null
   const closeModal = () => setModal(null)
   useEffect(() => {
@@ -219,6 +232,7 @@ export default function App() {
     if (!started) return undefined
     let cancelled = false
     const timer = window.setTimeout(async () => {
+      if (refreshKey) setRefreshing(true)
       try {
         const data = await api.listFacilities(intake.searchLocation || 'Nashville')
         const resolved = data.resolved !== false
@@ -229,10 +243,12 @@ export default function App() {
         if (cancelled) return
         setCatalogState({ source: 'demo', list: [], center: null, resolved: true })
         setProgram('All sample options')
+      } finally {
+        if (!cancelled) setRefreshing(false)
       }
-    }, 500)
+    }, refreshKey ? 150 : 500)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [started, intake.searchLocation, accountId])
+  }, [started, intake.searchLocation, accountId, refreshKey])
   // Care explainer, doctor questions, and checklist from the server (AI drafts + rules). Re-run only when answers change.
   useEffect(() => {
     if (!['overview', 'plan'].includes(page) || guidance?.key === backendKey) return undefined
@@ -364,9 +380,9 @@ export default function App() {
           {page === 'facilities' && <>
             <div className="facility-toolbar panel"><div><strong><Icon name="pin" size={17} />{live ? (catalogState.resolved ? `Tennessee · near ${catalogState.center?.label || 'Nashville'}` : `No match for “${intake.searchLocation}”`) : 'Nashville, Tennessee'}</strong><small>{live ? (catalogState.resolved ? 'Real CMS records, ranked by match score. The score combines CMS data with your priorities.' : `We couldn’t find “${intake.searchLocation}” in the Tennessee data. Try a Tennessee city or ZIP code.`) : intake.searchLocation && !/nashville|372/.test(intake.searchLocation.toLowerCase()) ? `Your preference: ${intake.searchLocation}. Showing Nashville examples only.` : 'Fictional options, shown without a best-home ranking.'}</small></div><label>Travel range<select value={intake.travelMiles} onChange={(e) => patch({ travelMiles: Number(e.target.value) })}>{[5, 10, 15, 25, 50].map((v) => <option key={v} value={v}>Within {v} miles</option>)}{![5, 10, 15, 25, 50].includes(intake.travelMiles) && <option value={intake.travelMiles}>Within {intake.travelMiles} miles</option>}</select></label><label>Sort by<select value={effectiveSort} onChange={(e) => setSort(e.target.value)}>{live && <option value="score">Best match score</option>}<option value="distance">Distance</option><option value="name">Name: A–Z</option><option value="staffing">{live ? 'Nurse staffing hours' : 'Sample staffing hours'}</option></select></label></div>
             <div className="filter-row"><div className="filter-chips">{(live ? liveFilters : ['All sample options', 'Short recovery stays', 'Memory support']).map((v) => <button key={v} className={program === v ? 'active' : ''} aria-pressed={program === v} onClick={() => setProgram(v)}>{v}</button>)}</div><span>{listed.length} {live ? 'facilities' : 'sample options'}</span></div>
-            {live && catalogState.resolved && rankIds.length > 0 && <ScoreBanner shares={shares} name={name} reasons={scoreReasons(needs, intake.priorities)} count={rankIds.length} />}
+            {live && catalogState.resolved && rankIds.length > 0 && <ScoreBanner shares={shares} name={name} reasons={scoreReasons(needs, intake.priorityWeights)}><PriorityTuner applied={intake.priorityWeights} onApply={applyPriorities} busy={refreshing} /></ScoreBanner>}
             {catalogState.source === 'loading' && <div className="panel empty-state" role="status"><Icon name="home" size={35} /><h2>Loading nursing homes…</h2><p>Fetching Tennessee records from Medicare Care Compare data.</p></div>}
-            <div className="facility-grid">{listed.map((f) => <article className="facility-card" key={f.id}><div className={`facility-image ${f.isFictional ? '' : 'live-rating'}`}>{f.isFictional ? <><Building variant={facilities.indexOf(f)} /><span className="fictional-label">FICTIONAL FACILITY</span></> : <ScoreHeader f={f} rank={rankIds.indexOf(f.id) + 1 || null} total={rankIds.length} />}<button className={`save-home ${shortlist.includes(f.id) ? 'saved' : ''}`} aria-label={`${shortlist.includes(f.id) ? 'Unsave' : 'Save'} ${f.name}`} aria-pressed={shortlist.includes(f.id)} onClick={() => toggleSaved(f.id)}><Icon name="heart" size={20} /></button></div><div className="facility-body"><div className="facility-title"><h2>{f.name}</h2>{f.distance !== null && f.distance !== undefined && <span><Icon name="pin" size={14} />{f.distance} mi</span>}</div><p className="facility-location">{f.location.replace(' · demo location', '')}</p><div className="facility-features">{f.provides.slice(0, 2).map((v) => <span key={v}>{v}</span>)}{!f.isFictional && <span>{f.overall === null ? 'CMS overall: not rated' : `CMS overall: ${f.overall} of 5 stars`}</span>}</div>{!f.isFictional && <StrengthWatch f={f} />}<button className="button facility-details" onClick={() => details(f.id)}>View facility details <Icon name="arrow" size={17} /></button></div></article>)}</div>
+            <div className="facility-grid">{listed.map((f) => <article className="facility-card" key={f.id}><div className={`facility-image ${f.isFictional ? '' : 'live-rating'}`}>{f.isFictional ? <><Building variant={facilities.indexOf(f)} /><span className="fictional-label">FICTIONAL FACILITY</span></> : <ScoreHeader f={f} rank={rankIds.indexOf(f.id) + 1 || null} total={rankIds.length} moved={movedFor(f.id)} />}<button className={`save-home ${shortlist.includes(f.id) ? 'saved' : ''}`} aria-label={`${shortlist.includes(f.id) ? 'Unsave' : 'Save'} ${f.name}`} aria-pressed={shortlist.includes(f.id)} onClick={() => toggleSaved(f.id)}><Icon name="heart" size={20} /></button></div><div className="facility-body"><div className="facility-title"><h2>{f.name}</h2>{f.distance !== null && f.distance !== undefined && <span><Icon name="pin" size={14} />{f.distance} mi</span>}</div><p className="facility-location">{f.location.replace(' · demo location', '')}</p><div className="facility-features">{f.provides.slice(0, 2).map((v) => <span key={v}>{v}</span>)}{!f.isFictional && <span>{f.overall === null ? 'CMS overall: not rated' : `CMS overall: ${f.overall} of 5 stars`}</span>}</div>{!f.isFictional && <StrengthWatch f={f} />}<button className="button facility-details" onClick={() => details(f.id)}>View facility details <Icon name="arrow" size={17} /></button></div></article>)}</div>
             {!listed.length && catalogState.source !== 'loading' && <div className="panel empty-state"><Icon name="home" size={35} /><h2>{live && !catalogState.resolved ? 'No results for that location.' : 'No sample options in this range.'}</h2><p>{live && !catalogState.resolved ? 'This demo covers Tennessee nursing homes. Change the location in “Your family’s priorities”.' : 'Try a wider travel range or another filter.'}</p>{!(live && !catalogState.resolved) && <button className="button secondary" onClick={() => { patch({ travelMiles: live ? 25 : 15 }); setProgram(live ? 'All facilities' : 'All sample options') }}>Reset filters</button>}</div>}
             <p className="metric-note">{live ? <>Source: CMS Care Compare (Provider Data Catalog), Tennessee. Distances are straight-line from the middle of your search area. The match score is our summary of CMS data and your priorities. It is not medical advice or a guarantee of care. <a href="https://www.medicare.gov/care-compare/" target="_blank" rel="noreferrer">Open Medicare Care Compare <Icon name="external" size={12} /></a></> : <>Distances, services, and staffing figures are invented examples. No provider data or live availability is connected. <a href="https://www.medicare.gov/care-compare/" target="_blank" rel="noreferrer">Find real facilities on Medicare Care Compare <Icon name="external" size={12} /></a></>}</p>
             <div className="shortlist-bar"><div><span className="soft-icon"><Icon name="heart" size={21} /></span><span><strong>{savedHomes.length} places saved</strong><small>{savedHomes.length < 2 ? 'Save at least two to compare the details.' : 'Compare the homes on your shortlist.'}</small></span></div><div><button className="button secondary" disabled={savedHomes.length < 2} onClick={() => setModal({ type: 'comparison' })}>Compare saved</button><button className="button primary" onClick={() => setPage('plan')}>Your move-in plan <Icon name="arrow" size={17} /></button></div></div>

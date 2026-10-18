@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { facilities, sampleIntake } from '../data/prototype.js'
 import { buildTasks } from './plan.js'
+import { defaultPriorityWeights } from './priorities.js'
 import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './demo-model.js'
 
 test('a sample hospital journey personalizes the existing task library', () => {
@@ -43,7 +44,7 @@ test('drafts hydrate stale arrays and nested values and omit account credentials
   const draft = loadDraft()
   assert.equal(draft.page, 'welcome')
   assert.equal(draft.intake.personName, 'Arthur')
-  assert.deepEqual(draft.intake.priorities, [])
+  assert.deepEqual(draft.intake.priorityWeights, defaultPriorityWeights())
   assert.deepEqual(draft.intake.coverage, ['Medicaid'])
   assert.equal(draft.intake.dailySupport.bathing, 'Some help')
   assert.equal(draft.intake.dailySupport.medicines, 'Not sure')

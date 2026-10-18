@@ -93,13 +93,48 @@ test('missing parts are left out, and unscored homes stay unscored', () => {
   assert.equal(matchScore({ score: null, scoreParts: {}, distance: 2 }).match, null)
 })
 
-test('top priorities pull the score toward what the family ranked first', () => {
+test('priority sliders pull the score toward what the family cares about most', () => {
   const home = scored(80, { inspections: 40, staffing: 100, quality: 70, safety: 70 }, 20)
-  const staffingFirst = matchScore(home, scoreWeights(['Staffing', 'Inspection information', 'Close to family'])).match
-  const distanceFirst = matchScore(home, scoreWeights(['Close to family', 'Inspection information', 'Staffing'])).match
-  assert.ok(staffingFirst > distanceFirst)
+  const staffingHigh = matchScore(home, scoreWeights({ 'Staffing': 100, 'Close to family': 0, 'Inspection information': 20, 'Quality of care': 20 })).match
+  const distanceHigh = matchScore(home, scoreWeights({ 'Staffing': 0, 'Close to family': 100, 'Inspection information': 20, 'Quality of care': 20 })).match
+  assert.ok(staffingHigh > distanceHigh)
   assert.equal(distanceScore(0), 100)
   assert.equal(distanceScore(80), 0)
+})
+
+test('weights come only from the sliders, move smoothly, and a slider at 0 removes that part', () => {
+  const base = { 'Close to family': 50, 'Staffing': 50, 'Inspection information': 50, 'Quality of care': 50 }
+  const low = scoreWeights({ ...base, Staffing: 25 })
+  const high = scoreWeights({ ...base, Staffing: 75 })
+  assert.ok(high.staffing > scoreWeights(base).staffing && scoreWeights(base).staffing > low.staffing)
+  const off = scoreWeights({ ...base, 'Close to family': 0 })
+  assert.equal(off.distance, 0)
+  const near = scored(80, parts, 1), far = scored(80, parts, 45)
+  assert.equal(matchScore(near, off, { travelMiles: 50 }).match, matchScore(far, off, { travelMiles: 50 }).match)
+  assert.ok(matchScore(near, scoreWeights(base), { travelMiles: 50 }).match > matchScore(far, scoreWeights(base), { travelMiles: 50 }).match)
+  assert.equal(scoreWeights({ ...base, 'Costs & coverage': 100 }).staffing, scoreWeights(base).staffing)
+  const inspection = scoreWeights({ ...base, 'Inspection information': 100 })
+  assert.ok(Math.abs(inspection.inspections / inspection.safety - 1.5) < 1e-9)
+})
+
+test('all sliders at 0, or none that fit the available data, fall back to counting parts equally', () => {
+  const zero = { 'Close to family': 0, 'Staffing': 0, 'Inspection information': 0, 'Quality of care': 0 }
+  const weights = scoreWeights(zero)
+  assert.ok(Object.values(weights).every((weight) => weight > 0))
+  const onlyDistance = { ...zero, 'Close to family': 100 }
+  const noDistance = { ...scored(80, parts, null) }
+  const result = matchScore(noDistance, scoreWeights(onlyDistance), { travelMiles: 25 })
+  assert.ok(Number.isInteger(result.match))
+  const shares = weightShares(scoreWeights(onlyDistance), { distance: false })
+  assert.equal(shares.reduce((sum, share) => sum + share.pct, 0), 100)
+})
+
+test('score reasons say when sliders are untouched or switched off', () => {
+  const equal = scoreReasons(null, { 'Close to family': 50, 'Staffing': 50, 'Inspection information': 50, 'Quality of care': 50, 'Costs & coverage': 50 })
+  assert.match(equal[0], /same level/)
+  const set = scoreReasons(null, { 'Close to family': 0, 'Staffing': 90, 'Inspection information': 60, 'Quality of care': 30, 'Costs & coverage': 50 })
+  assert.match(set[0], /staffing, inspection information, quality of care/)
+  assert.match(set[1], /close to family/)
 })
 
 test('sorting by score puts the highest match first and unscored last', () => {
@@ -113,10 +148,10 @@ test('a person who needs more care raises the staffing bar and its weight', () =
   const light = needsProfile({ dailySupport: { bathing: 'No help' }, memorySupport: 'Not sure' })
   const heavy = needsProfile({ dailySupport: { bathing: 'Substantial help', eating: 'Substantial help' }, mobility: ['Wheelchair'], memorySupport: 'Frequent supervision needed' })
   assert.ok(heavy.targetHours > light.targetHours)
-  assert.ok(scoreWeights([], heavy).staffing > scoreWeights([], light).staffing)
+  assert.ok(scoreWeights({}, heavy).staffing > scoreWeights({}, light).staffing)
   const home = { score: 70, scoreParts: { inspections: 75, staffing: 60, quality: 75, safety: 100 }, distance: 5, staffingHours: 3.8, rnHours: 0.5, turnover: 45, staffRating: 3 }
-  const lightFit = matchScore(home, scoreWeights([], light), { needs: light, travelMiles: 25 })
-  const heavyFit = matchScore(home, scoreWeights([], heavy), { needs: heavy, travelMiles: 25 })
+  const lightFit = matchScore(home, scoreWeights({}, light), { needs: light, travelMiles: 25 })
+  const heavyFit = matchScore(home, scoreWeights({}, heavy), { needs: heavy, travelMiles: 25 })
   const staffing = (r) => r.matchParts.find((p) => p.key === 'staffing').value
   assert.ok(staffing(heavyFit) < staffing(lightFit))
   assert.ok(heavyFit.matchReasons[0].includes('substantial help'))
@@ -128,13 +163,13 @@ test('distance is judged against the family’s own travel range', () => {
   assert.equal(distanceScore(null, 25), null)
 })
 
-import { weightShares } from './api-model.js'
+import { scoreReasons, weightShares } from './api-model.js'
 
 test('weight shares add up to 100 and drop distance when the place is unknown', () => {
-  const withDistance = weightShares(scoreWeights(['Staffing', 'Inspection information', 'Close to family']))
+  const withDistance = weightShares(scoreWeights({ 'Staffing': 90, 'Inspection information': 60, 'Close to family': 30, 'Quality of care': 10 }))
   assert.equal(withDistance.reduce((sum, s) => sum + s.pct, 0), 100)
   assert.equal(withDistance[0].key, 'staffing')
-  const noDistance = weightShares(scoreWeights([]), { distance: false })
+  const noDistance = weightShares(scoreWeights({}), { distance: false })
   assert.equal(noDistance.some((s) => s.key === 'distance'), false)
   assert.equal(noDistance.reduce((sum, s) => sum + s.pct, 0), 100)
 })
