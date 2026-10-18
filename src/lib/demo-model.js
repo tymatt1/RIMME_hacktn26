@@ -59,6 +59,7 @@ export function visibleFacilities(facilities, miles = Infinity, program = 'All s
   const hours = (facility) => facility.staffingHours ?? -1
   const miles_ = (facility) => facility.distance ?? Infinity
   return filtered.sort((left, right) => {
+    if (sort === 'score') return (right.match ?? -1) - (left.match ?? -1) || miles_(left) - miles_(right) || byName(left, right)
     if (sort === 'name') return byName(left, right)
     if (sort === 'staffing') return hours(right) - hours(left) || byName(left, right)
     return miles_(left) - miles_(right) || byName(left, right)

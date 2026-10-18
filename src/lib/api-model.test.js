@@ -38,7 +38,7 @@ test('server tasks keep stable ids across regenerated plans', () => {
   assert.equal(first.planId, 3)
 })
 
-test('CMS facilities become cards without a composite score and with honest nulls', () => {
+test('CMS facilities become cards with honest nulls', () => {
   const card = facilityFromApi({ ccn: '445159', name: 'BETHANY CENTER FOR REHABILITATION AND HEALING LLC', address: '421 OCALA DRIVE', city: 'NASHVILLE', county: 'Davidson', zip: '37211', phone: '6158344214', ownership_type: 'For profit - Limited Liability company', certified_beds: 180, avg_residents: 150.2, overall_rating: 1, health_inspection_rating: 2, staffing_rating: 1, qm_rating: 4, total_nurse_hours_per_resident_day: '3.49', rn_hours_per_resident_day: null, total_nursing_turnover_pct: '61.2', special_focus_status: null, abuse_icon: 'N', num_fines: 0, total_fines_usd: null, distance_miles: 7.1, citations_total: 8, latest_survey: '2025-04-11', serious_citations: 1 })
   assert.equal(card.name, 'Bethany Center For Rehabilitation And Healing LLC')
   assert.equal(card.isFictional, false)
@@ -46,7 +46,7 @@ test('CMS facilities become cards without a composite score and with honest null
   assert.equal(card.rnHours, null)
   assert.equal(card.inspectionTone, 'attention')
   assert.match(card.questions[0], /severity G or higher/)
-  assert.equal('score' in card, false)
+  assert.equal(card.score, null)
   const unrated = facilityFromApi({ ccn: '1', name: 'NEW HOME', city: 'X', county: 'Y', zip: '1', overall_rating: null, staffing_rating: null, distance_miles: null })
   assert.equal(unrated.overall, null)
   assert.equal(unrated.staffingHours, null)
@@ -71,4 +71,70 @@ test('names, severity letters, and Know Me bodies are formatted for families', (
   assert.equal(severityLabel('G'), 'G · actual harm')
   const body = toKnowMeBody({ morning: 'Slow start', interests: ['Music'], comforts: [], communication: ['Give me time to respond'], notes: 'Loves jazz' }, 'Arthur')
   assert.deepEqual(JSON.parse(JSON.stringify(body)), { preferred_name: 'Arthur', background: 'Loves jazz', daily_routine: 'Slow start', likes: 'Music', communication: 'Give me time to respond' })
+})
+
+import { matchScore, scoreWeights, distanceScore } from './api-model.js'
+import { visibleFacilities as visible } from './demo-model.js'
+
+const scored = (score, parts, distance = 5) => ({ id: String(score), name: `n${score}`, score, scoreParts: parts, distance, staffingHours: 4, filterTags: [] })
+const parts = { inspections: 100, staffing: 40, quality: 60, safety: 100 }
+
+test('match score combines parts with distance and renormalizes weights', () => {
+  const { match, matchParts } = matchScore(scored(80, parts, 0))
+  assert.equal(matchParts.length, 5)
+  assert.equal(matchParts.reduce((sum, p) => sum + p.weight, 0) >= 99, true)
+  assert.ok(match > 60 && match < 90)
+})
+
+test('missing parts are left out, and unscored homes stay unscored', () => {
+  const some = matchScore(scored(70, { inspections: 50, staffing: null, quality: 50, safety: 50 }, null))
+  assert.equal(some.match, 50)
+  assert.equal(some.matchParts.length, 3)
+  assert.equal(matchScore({ score: null, scoreParts: {}, distance: 2 }).match, null)
+})
+
+test('top priorities pull the score toward what the family ranked first', () => {
+  const home = scored(80, { inspections: 40, staffing: 100, quality: 70, safety: 70 }, 20)
+  const staffingFirst = matchScore(home, scoreWeights(['Staffing', 'Inspection information', 'Close to family'])).match
+  const distanceFirst = matchScore(home, scoreWeights(['Close to family', 'Inspection information', 'Staffing'])).match
+  assert.ok(staffingFirst > distanceFirst)
+  assert.equal(distanceScore(0), 100)
+  assert.equal(distanceScore(80), 0)
+})
+
+test('sorting by score puts the highest match first and unscored last', () => {
+  const list = [{ ...scored(1, parts), match: 40 }, { ...scored(2, parts), match: null }, { ...scored(3, parts), match: 90 }]
+  assert.deepEqual(visible(list, Infinity, 'All facilities', 'score').map((f) => f.match), [90, 40, null])
+})
+
+import { needsProfile } from './api-model.js'
+
+test('a person who needs more care raises the staffing bar and its weight', () => {
+  const light = needsProfile({ dailySupport: { bathing: 'No help' }, memorySupport: 'Not sure' })
+  const heavy = needsProfile({ dailySupport: { bathing: 'Substantial help', eating: 'Substantial help' }, mobility: ['Wheelchair'], memorySupport: 'Frequent supervision needed' })
+  assert.ok(heavy.targetHours > light.targetHours)
+  assert.ok(scoreWeights([], heavy).staffing > scoreWeights([], light).staffing)
+  const home = { score: 70, scoreParts: { inspections: 75, staffing: 60, quality: 75, safety: 100 }, distance: 5, staffingHours: 3.8, rnHours: 0.5, turnover: 45, staffRating: 3 }
+  const lightFit = matchScore(home, scoreWeights([], light), { needs: light, travelMiles: 25 })
+  const heavyFit = matchScore(home, scoreWeights([], heavy), { needs: heavy, travelMiles: 25 })
+  const staffing = (r) => r.matchParts.find((p) => p.key === 'staffing').value
+  assert.ok(staffing(heavyFit) < staffing(lightFit))
+  assert.ok(heavyFit.matchReasons[0].includes('substantial help'))
+})
+
+test('distance is judged against the family’s own travel range', () => {
+  assert.equal(distanceScore(10, 10), 0)
+  assert.equal(distanceScore(10, 50), 80)
+  assert.equal(distanceScore(null, 25), null)
+})
+
+import { weightShares } from './api-model.js'
+
+test('weight shares add up to 100 and drop distance when the place is unknown', () => {
+  const withDistance = weightShares(scoreWeights(['Staffing', 'Inspection information', 'Close to family']))
+  assert.equal(withDistance.reduce((sum, s) => sum + s.pct, 0), 100)
+  assert.equal(withDistance[0].key, 'staffing')
+  const noDistance = weightShares(scoreWeights([]), { distance: false })
+  assert.equal(noDistance.some((s) => s.key === 'distance'), false)
+  assert.equal(noDistance.reduce((sum, s) => sum + s.pct, 0), 100)
 })

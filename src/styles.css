@@ -1128,3 +1128,58 @@ select { cursor: pointer; }
   .primary-nav-link { padding: 13px 10px; }
   .primary-nav-label { font-size: 12px; line-height: 1.4; letter-spacing: -.15px; }
 }
+
+/* Match score */
+.rating-badge.match-high strong { color: #1f6b4a; }
+.rating-badge.match-mid strong { color: #8a6a1e; }
+.rating-badge.match-low strong { color: #a24b3a; }
+.score-card { border: 1px solid var(--line, #e3e1d8); border-radius: 16px; padding: 18px 20px; margin: 0 0 18px; background: #fffdf7; }
+.score-head { display: flex; gap: 16px; align-items: center; }
+.score-head h3 { margin: 0 0 2px; }
+.score-head p { margin: 0; font-size: 0.85rem; opacity: 0.8; }
+.score-number { display: flex; align-items: baseline; gap: 4px; min-width: 96px; }
+.score-number strong { font-size: 2.6rem; line-height: 1; font-family: Georgia, serif; }
+.score-number span { font-size: 0.9rem; opacity: 0.7; }
+.score-card.match-high .score-number strong { color: #1f6b4a; }
+.score-card.match-mid .score-number strong { color: #8a6a1e; }
+.score-card.match-low .score-number strong { color: #a24b3a; }
+.score-parts { list-style: none; margin: 14px 0 6px; padding: 0; display: grid; gap: 12px; }
+.score-part-top { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.score-part-top span { opacity: 0.75; }
+.score-bar { height: 8px; border-radius: 99px; background: #e8e6da; overflow: hidden; margin: 5px 0 3px; }
+.score-bar span { display: block; height: 100%; background: #5b7f66; border-radius: 99px; }
+.score-parts small { opacity: 0.7; font-size: 0.78rem; }
+.score-reasons { margin: 8px 0; padding-left: 18px; font-size: 0.85rem; }
+.score-reasons li { margin: 3px 0; }
+
+/* Score on results */
+.score-header { display: flex; align-items: center; gap: 14px; padding: 4px 2px; }
+.score-header > div { display: flex; flex-direction: column; gap: 3px; }
+.score-header strong { font-size: 1rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.score-header span { font-size: 0.82rem; opacity: 0.8; }
+.score-header .rank-pill { font-size: 0.72rem; font-weight: 700; opacity: 1; padding: 2px 8px; border-radius: 99px; background: #1b4d3e; color: #fff; }
+.score-unscored { display: inline-grid; place-items: center; width: 62px; height: 62px; border-radius: 50%; border: 2px dashed #b9b6a6; font-size: 1.6rem; }
+.score-gauge .gauge-track { stroke: #dedbcc; }
+.score-gauge .gauge-fill { stroke: #5b7f66; }
+.score-gauge .gauge-number { font-family: Georgia, serif; font-size: 26px; fill: #1b4d3e; }
+.match-high .gauge-fill { stroke: #2f7d57; }
+.match-mid .gauge-fill { stroke: #c19a3b; }
+.match-low .gauge-fill { stroke: #bf5b45; }
+.strength-watch { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 2px; font-size: 0.8rem; }
+.mini-parts { list-style: none; padding: 0; margin: 8px 0 4px; display: grid; gap: 5px; }
+.mini-parts li { display: grid; grid-template-columns: 112px 1fr 28px; align-items: center; gap: 8px; font-size: 0.76rem; }
+.mini-parts b { text-align: right; font-weight: 600; }
+.mini-bar { height: 6px; border-radius: 99px; background: #e8e6da; overflow: hidden; display: block; }
+.mini-bar > span { display: block; height: 100%; background: #5b7f66; border-radius: 99px; }
+.score-banner { margin: 0 0 18px; }
+.score-banner h2 { margin: 0 0 4px; }
+.score-banner p { margin: 0; font-size: 0.9rem; opacity: 0.85; }
+.weight-bar { display: flex; height: 14px; border-radius: 99px; overflow: hidden; margin: 14px 0 8px; gap: 2px; }
+.weight-bar span { display: block; min-width: 6px; }
+.w-inspections { background: #2f6f5e; } .w-staffing { background: #c19a3b; } .w-quality { background: #6c8fb8; }
+.w-safety { background: #bf5b45; } .w-distance { background: #8a7bb0; }
+.weight-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0; margin: 0 0 6px; font-size: 0.82rem; }
+.weight-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.score-explainer { margin-top: 8px; font-size: 0.85rem; }
+.score-explainer summary { cursor: pointer; font-weight: 600; }
+.score-explainer ol { padding-left: 20px; margin: 8px 0; }

@@ -1,5 +1,5 @@
 import Icon from './Icon.jsx'
-import { severityLabel, severityLegend, starText } from '../lib/api-model.js'
+import { notMatched, scoreTone, severityLabel, severityLegend, starText } from '../lib/api-model.js'
 
 const fmtDate = (value) => String(value || '').slice(0, 10)
 const money = (value) => `$${Number(value || 0).toLocaleString('en-US')}`
@@ -17,6 +17,7 @@ export function LiveOverview({ f }) {
   ]
   return <>
     <p>{f.description}</p>
+    <ScoreBreakdown f={f} />
     <div className="rating-grid">{ratings.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value === null ? 'Not rated' : <>{value}<small> / 5</small></>}</strong></div>)}</div>
     <div className="detail-facts">{facts.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
     {f.abuseIcon && <div className="question-highlight">CMS shows an abuse icon for this facility. Ask the facility about it, and read the inspection details.</div>}
@@ -50,6 +51,8 @@ export function LiveInspection({ f, detail, ask, onAsk }) {
 }
 
 export const liveCompareRows = [
+  ['Match score', (f) => (f.match === null || f.match === undefined ? 'Not scored' : `${f.match} / 100`)],
+  ...[['inspections', '· Inspection results'], ['staffing', '· Nurse staffing'], ['quality', '· Quality measures'], ['safety', '· Safety record'], ['distance', '· Distance']].map(([key, label]) => [label, (f) => { const part = f.matchParts?.find((p) => p.key === key); return part ? `${part.value} / 100` : '–' }]),
   ['Overall rating', (f) => starText(f.overall)], ['Health inspection', (f) => starText(f.healthRating)],
   ['Staffing rating', (f) => starText(f.staffRating)], ['Quality measures', (f) => starText(f.qmRating)],
   ['Nurse hours / resident / day', (f) => (f.staffingHours === null ? 'Not reported' : f.staffingHours.toFixed(2))],
@@ -60,3 +63,15 @@ export const liveCompareRows = [
   ['Fines', (f) => (f.fines ? `${f.fines} (${money(f.finesTotal)})` : 'None listed')],
   ['Openings & coverage', () => 'Confirm with facility'],
 ]
+
+// How the match score is built: each component, its 0-100 value, and how much it counts.
+export function ScoreBreakdown({ f }) {
+  if (f.match === null || f.match === undefined) return <div className="gentle-callout"><Icon name="clock" /><p>{f.scoreReason || 'Not enough CMS data to score this home.'} Use the ratings below and ask the facility.</p></div>
+  return <section className={`score-card match-${scoreTone(f.match)}`} aria-label="Match score breakdown">
+    <div className="score-head"><div className="score-number"><strong>{f.match}</strong><span>/ 100</span></div><div><h3>Match score</h3><p>Built from CMS data and your priorities. It is not medical advice or a guarantee of care.</p></div></div>
+    <ul className="score-parts">{f.matchParts.map((part) => <li key={part.key}><div className="score-part-top"><strong>{part.label}</strong><span>{part.value}/100 · counts {part.weight}%</span></div><div className="score-bar" role="presentation"><span style={{ width: `${part.value}%` }} /></div><small>{part.note}</small></li>)}</ul>
+    {f.matchReasons?.length > 0 && <ul className="score-reasons">{f.matchReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
+    {f.scoreNotes.length > 0 && <p className="field-hint">Flags included: {f.scoreNotes.join('; ')}.</p>}
+    <p className="field-hint">Parts CMS has no data for are left out, not counted as zero. {notMatched}</p>
+  </section>
+}

@@ -139,6 +139,11 @@ export function facilityFromApi(row) {
     description: [row.ownership_type, beds ? `${beds} certified beds` : '', row.avg_residents ? `about ${Math.round(row.avg_residents)} residents per day` : ''].filter(Boolean).join(' · '),
     questions: facilityQuestions({ ...row, staffing_rating: num(row.staffing_rating) }, serious),
     isFictional: false,
+    score: num(row.score),
+    scoreParts: row.score_parts || {},
+    scoreNotes: Array.isArray(row.score_notes) ? row.score_notes : [],
+    scoreReason: row.score_reason || '',
+    worstSeverity: row.worst_severity || '',
   }
 }
 
@@ -161,3 +166,115 @@ export const knowMeSections = [
   ['my_story', 'My story'], ['my_day', 'My day'], ['what_i_enjoy', 'Things I enjoy'],
   ['what_calms_me', 'What calms me'], ['what_upsets_me', 'What upsets me'], ['how_to_talk_with_me', 'How to talk with me'],
 ]
+
+// ---- Match score (0-100) -------------------------------------------------------------------
+// The server returns four 0-100 components built from CMS fields (generic, same for everyone).
+// Here the score is re-fit to THIS person: how much care they need sets the staffing a home must show,
+// the travel range sets what "close" means, and the ranked priorities set what counts most.
+// Missing CMS data is left out, never counted as zero.
+export const scoreComponents = [
+  ['inspections', 'Inspection results', 'CMS health inspection stars'],
+  ['staffing', 'Nurse staffing', 'CMS staffing stars, nurse and RN hours, staff turnover'],
+  ['quality', 'Quality measures', 'CMS quality measure stars'],
+  ['safety', 'Safety record', 'Serious citations (severity G or higher), immediate jeopardy, fines, abuse icon, special focus'],
+  ['distance', 'Distance', 'Straight-line miles from your search area'],
+]
+const baseWeights = { inspections: 0.30, staffing: 0.25, quality: 0.25, safety: 0.20, distance: 0.10 }
+const boosts = [2, 1.6, 1.3]
+const clip = (value) => Math.max(0, Math.min(100, value))
+
+export const notMatched = 'CMS has no data on memory-care units, languages, room types, or whether a home accepts Medicaid, so those are not in the score. Ask each home.'
+
+// How much care does this person need? Counts needs from the intake; never guesses missing answers.
+export function needsProfile(intake = {}) {
+  const reasons = []
+  let points = 0
+  const daily = Object.entries(intake.dailySupport || {})
+  const heavy = daily.filter(([, level]) => level === 'Substantial help').map(([activity]) => activity)
+  const some = daily.filter(([, level]) => level === 'Some help').map(([activity]) => activity)
+  if (heavy.length) { points += heavy.length; reasons.push(`substantial help with ${heavy.join(', ')}`) }
+  if (some.length) { points += some.length * 0.5; reasons.push(`some help with ${some.join(', ')}`) }
+  const mobility = Array.isArray(intake.mobility) ? intake.mobility : []
+  if (mobility.includes('Wheelchair')) { points += 1; reasons.push('wheelchair use') }
+  if (intake.transferHelp === 'Substantial help') { points += 1; reasons.push('substantial help moving or transferring') }
+  else if (intake.transferHelp === 'Some help') { points += 0.5; reasons.push('some help moving or transferring') }
+  if (intake.memorySupport === 'Frequent supervision needed') { points += 2; reasons.push('frequent supervision for memory') }
+  else if (intake.memorySupport === 'Reminders help') { points += 1; reasons.push('memory reminders') }
+  points = Math.min(6, points)
+  return {
+    points,
+    reasons,
+    targetHours: Math.round((3.6 + 0.15 * points) * 100) / 100,
+    targetRn: Math.round((0.5 + 0.07 * points) * 100) / 100,
+  }
+}
+
+// Ranked priorities count more, and so does staffing when the person needs more hands-on care.
+export function scoreWeights(order = [], needs = null) {
+  const weights = { ...baseWeights }
+  const topics = Array.isArray(order) ? order.slice(0, boosts.length) : []
+  topics.forEach((topic, index) => {
+    const boost = boosts[index]
+    if (topic === 'Staffing') weights.staffing *= boost
+    else if (topic === 'Inspection information') { weights.inspections *= boost; weights.safety *= boost }
+    else if (topic === 'Close to family') weights.distance *= boost
+  })
+  if (needs?.points) weights.staffing *= 1 + 0.12 * needs.points
+  return weights
+}
+
+// 100 at 0 miles down to 0 at the family's travel range (default 50).
+export const distanceScore = (miles, range = 50) => (miles === null || miles === undefined ? null : Math.round(clip((1 - miles / (Number(range) > 0 ? Number(range) : 50)) * 100)))
+
+// Nurse staffing measured against what THIS person needs, not a fixed scale.
+function staffingFit(f, needs) {
+  const bits = [
+    [0.40, f.staffRating === null || f.staffRating === undefined ? null : ((f.staffRating - 1) / 4) * 100],
+    [0.30, f.staffingHours === null || f.staffingHours === undefined ? null : clip(((f.staffingHours - (needs.targetHours - 1.2)) / 1.2) * 100)],
+    [0.15, f.rnHours === null || f.rnHours === undefined ? null : clip(((f.rnHours - (needs.targetRn - 0.45)) / 0.45) * 100)],
+    [0.15, f.turnover === null || f.turnover === undefined ? null : clip(((75 - f.turnover) / 40) * 100)],
+  ].filter(([, value]) => value !== null)
+  if (!bits.length) return null
+  return bits.reduce((sum, [w, v]) => sum + w * v, 0) / bits.reduce((sum, [w]) => sum + w, 0)
+}
+
+export function scoreReasons(needs, priorities) {
+  const reasons = []
+  if (needs?.reasons.length) reasons.push(`Staffing is measured against ${needs.targetHours} nurse hours a day and counts more, because of: ${needs.reasons.join('; ')}.`)
+  const ranked = (Array.isArray(priorities) ? priorities : []).filter((topic) => ['Close to family', 'Staffing', 'Inspection information'].includes(topic)).slice(0, 3)
+  if (ranked.length) reasons.push(`Your ranked priorities count more: ${ranked.join(', ').toLowerCase()}.`)
+  return reasons
+}
+
+// -> { match: integer 0-100 | null, matchParts: [{ key, label, note, value, weight }], matchReasons: [string] }
+export function matchScore(f, weights = baseWeights, ctx = {}) {
+  if (f.score === null || f.score === undefined) return { match: null, matchParts: [], matchReasons: [] }
+  const needs = ctx.needs
+  const values = { ...f.scoreParts, distance: distanceScore(f.distance, ctx.travelMiles) }
+  const notes = {}
+  if (needs) {
+    const fit = staffingFit(f, needs)
+    if (fit !== null) values.staffing = Math.round(fit)
+    if (f.staffingHours !== null && f.staffingHours !== undefined) notes.staffing = `Needs call for about ${needs.targetHours} nurse hours per resident per day; this home reports ${f.staffingHours.toFixed(2)}. Also CMS staffing stars, RN hours, turnover.`
+  }
+  if (f.distance !== null && f.distance !== undefined && Number(ctx.travelMiles) > 0) notes.distance = `${f.distance} miles away, out of your ${ctx.travelMiles}-mile range (0 miles = 100, at the limit = 0)`
+  const present = scoreComponents.filter(([key]) => values[key] !== null && values[key] !== undefined)
+  const total = present.reduce((sum, [key]) => sum + weights[key], 0)
+  if (!total) return { match: null, matchParts: [], matchReasons: [] }
+  const match = Math.round(present.reduce((sum, [key]) => sum + weights[key] * values[key], 0) / total)
+  const matchParts = present.map(([key, label, note]) => ({ key, label, note: notes[key] || note, value: Math.round(values[key]), weight: Math.round((weights[key] / total) * 100) }))
+  return { match, matchParts, matchReasons: scoreReasons(needs, ctx.priorities) }
+}
+
+export const scoreTone = (match) => (match === null || match === undefined ? 'none' : match >= 75 ? 'high' : match >= 55 ? 'mid' : 'low')
+
+// Percent each part counts for this family (what the results banner shows). Distance only counts when we know where they are looking.
+export function weightShares(weights, { distance = true } = {}) {
+  const parts = scoreComponents.filter(([key]) => distance || key !== 'distance')
+  const total = parts.reduce((sum, [key]) => sum + weights[key], 0)
+  const shares = parts.map(([key, label]) => ({ key, label, pct: Math.round((weights[key] / total) * 100) }))
+  const drift = 100 - shares.reduce((sum, s) => sum + s.pct, 0)
+  shares.sort((a, b) => b.pct - a.pct)
+  shares[0].pct += drift
+  return shares
+}
