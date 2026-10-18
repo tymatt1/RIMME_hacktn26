@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon.jsx'
+import PriorityInfo from './PriorityInfo.jsx'
 import { completePriorityOrder, movePriority } from '../lib/priorities.js'
 
 export default function PriorityRanking({ value, onChange }) {
@@ -90,7 +91,7 @@ export default function PriorityRanking({ value, onChange }) {
             window.requestAnimationFrame(() => handle.focus())
           }
         }}><Icon name="grip" size={20} /></button>
-        <span className="priority-number" aria-hidden="true">{destinationIndex(index) + 1}</span><span className="priority-topic">{topic}</span>
+        <span className="priority-number" aria-hidden="true">{destinationIndex(index) + 1}</span><span className="priority-topic">{topic}<PriorityInfo topic={topic} /></span>
         <div className="priority-actions"><button type="button" className="icon-button" aria-label={`Move ${topic} up`} disabled={index === 0} onClick={() => move(topic, order[index - 1])}><Icon name="up" size={16} /></button><button type="button" className="icon-button" aria-label={`Move ${topic} down`} disabled={index === order.length - 1} onClick={() => move(topic, order[index + 1])}><Icon name="down" size={16} /></button></div>
       </li>)}
     </ol>

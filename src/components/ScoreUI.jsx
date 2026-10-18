@@ -36,19 +36,14 @@ export function StrengthWatch({ f }) {
   return <p className="strength-watch"><span><b>Strongest:</b> {best.label} ({best.value})</span><span><b>Weakest:</b> {worst.label} ({worst.value})</span></p>
 }
 
-export function MiniParts({ f }) {
-  if (!f.matchParts?.length) return null
-  return <ul className="mini-parts" aria-label="Score parts">{f.matchParts.map((part) => <li key={part.key}><span>{part.label}</span><span className="mini-bar" role="presentation"><span style={{ width: `${part.value}%` }} /></span><b>{part.value}</b></li>)}</ul>
-}
-
 // Above the results: what counts most for THIS family, in percent, and how the score is built.
-export function ScoreBanner({ shares, name, reasons, count }) {
+export function ScoreBanner({ shares, name, reasons }) {
   return <section className="panel score-banner" aria-label="How homes are ranked">
-    <div className="score-banner-head"><div><h2>Ranked for {name}</h2><p>{count} {count === 1 ? 'home' : 'homes'} scored 0–100 from CMS data, weighted by what matters for {name}. Highest match first.</p></div></div>
+    <div className="score-banner-head"><div><h2>Ranked for {name}</h2></div></div>
     <div className="weight-bar" role="img" aria-label={`What counts most: ${shares.map((s) => `${s.label} ${s.pct} percent`).join(', ')}`}>{shares.map((s) => <span key={s.key} className={`w-${s.key}`} style={{ flex: s.pct }} title={`${s.label} ${s.pct}%`} />)}</div>
     <ul className="weight-legend">{shares.map((s) => <li key={s.key}><i className={`w-${s.key}`} />{s.label} <b>{s.pct}%</b></li>)}</ul>
-    {reasons.length > 0 && <ul className="score-reasons">{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
     <details className="score-explainer"><summary>How is the score calculated?</summary>
+      {reasons.length > 0 && <ul className="score-reasons">{reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
       <ol>
         <li>Each part is scored 0–100 from CMS data: inspection stars, nurse staffing (against the hours this person needs), quality stars, safety record (serious citations, fines, flags) and distance (against your travel range).</li>
         <li>Parts are averaged using the weights above. A part CMS has no data for is left out, never counted as zero.</li>

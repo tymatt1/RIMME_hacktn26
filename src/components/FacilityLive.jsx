@@ -1,4 +1,5 @@
 import Icon from './Icon.jsx'
+import { formatPhone } from '../lib/format.js'
 import { notMatched, scoreTone, severityLabel, severityLegend, starText } from '../lib/api-model.js'
 
 const fmtDate = (value) => String(value || '').slice(0, 10)
@@ -8,7 +9,7 @@ const money = (value) => `$${Number(value || 0).toLocaleString('en-US')}`
 export function LiveOverview({ f }) {
   const ratings = [['Overall', f.overall], ['Health inspections', f.healthRating], ['Staffing', f.staffRating], ['Quality measures', f.qmRating]]
   const facts = [
-    ['Address', f.address], ['Phone', f.phone || 'Not listed'],
+    ['Address', f.address], ['Phone', formatPhone(f.phone) || 'Not listed'],
     ['Nurse hours / resident / day', f.staffingHours === null ? 'Not reported' : `${f.staffingHours.toFixed(2)} total${f.rnHours === null ? '' : `, ${f.rnHours.toFixed(2)} RN`}`],
     ['Nursing staff turnover', f.turnover === null ? 'Not reported' : `${Math.round(f.turnover)}%`],
     ['Certified beds', f.beds ?? 'Not reported'], ['Ownership', f.ownership || 'Not reported'],

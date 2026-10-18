@@ -4,6 +4,16 @@ import { packingGroups } from '../data/packing.js'
 const ink = '#174d43'
 const muted = '#596658'
 const line = '#dce2d5'
+export function reportHeader(date, width = 520) {
+  return { margin: [46, 25, 46, 0], stack: [
+    { columns: [
+      { width: 32, svg: bridgeMarkSvg, height: 29 },
+      { text: [{ text: 'carebridge', color: ink, fontSize: 23, bold: true }, { text: '.', color: '#b57f61', fontSize: 23, bold: true }], width: 155, margin: [7, 2, 0, 0] },
+      { text: date, alignment: 'right', fontSize: 9, color: muted, margin: [0, 9, 0, 0] },
+    ] },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.7, lineColor: line }], margin: [0, 9, 0, 0] },
+  ] }
+}
 const clean = (value) => String(value ?? '').replace(/[\u2010-\u2015\u2212]/g, '-').replaceAll(String.fromCharCode(0), '').trim()
 const list = (value) => Array.isArray(value) ? value.map(clean).filter(Boolean).join(', ') : clean(value)
 const recorded = (value) => list(value) || 'Not recorded'
@@ -141,14 +151,7 @@ export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new
       subheading: { fontSize: 12, bold: true, color: ink, margin: [0, 12, 0, 8] },
       note: { fontSize: 9, color: muted, lineHeight: 1.4 },
     },
-    header: () => ({ margin: [46, 25, 46, 0], stack: [
-      { columns: [
-        { width: 32, svg: bridgeMarkSvg, height: 29 },
-        { text: [{ text: 'carebridge', color: ink, fontSize: 23, bold: true }, { text: '.', color: '#b57f61', fontSize: 23, bold: true }], width: 155, margin: [7, 2, 0, 0] },
-        { text: date, alignment: 'right', fontSize: 9, color: muted, margin: [0, 9, 0, 0] },
-      ] },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 520, y2: 0, lineWidth: 0.7, lineColor: line }], margin: [0, 9, 0, 0] },
-    ] }),
+    header: () => reportHeader(date),
     footer: (page, pages) => ({ margin: [46, 15, 46, 0], columns: [
       { text: isProfile ? 'Resident profile - family review required' : 'Family planning document', color: muted, fontSize: 8 },
       { text: `Page ${page} of ${pages}`, alignment: 'right', color: muted, fontSize: 8 },
