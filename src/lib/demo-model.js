@@ -1,4 +1,5 @@
 import { sampleIntake } from '../data/prototype.js'
+import { normalizeContacts } from './family.js'
 import { defaultPriorityWeights, normalizeBudget, normalizePriorityWeights, separatePreferenceTopics } from './priorities.js'
 
 const draftKey = 'carebridge-prototype-v1'
@@ -130,6 +131,7 @@ function hydrateDraft(draft) {
       aiDraft: hydrateAiDraft(profile.aiDraft),
     },
     members: safeMembers,
+    contacts: normalizeContacts(draft.contacts, safeMembers),
     assignees: Object.fromEntries(Object.entries(assignees).filter(([task, member]) => /^[a-z][a-z0-9-]*$/i.test(task) && task !== 'email' && task !== 'password' && (safeMembers.includes(member) || member === 'Unassigned'))),
     chosenFacility: typeof draft.chosenFacility === 'string' ? draft.chosenFacility : '',
     guidance: hydrateGuidance(draft.guidance),

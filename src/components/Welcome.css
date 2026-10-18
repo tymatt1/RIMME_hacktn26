@@ -24,6 +24,8 @@
 .welcome-description{font-size:16px;line-height:1.8;color:var(--w-body);max-width:425px;margin:0 0 31px}
 .welcome-buttons{display:flex;align-items:center;gap:17px;flex-wrap:wrap}
 .welcome-start{color:#fffef7;background:var(--w-ink);border:1px solid var(--w-ink);border-radius:6px;font-size:13px;font-weight:550;min-height:49px;padding:14px 20px;display:flex;align-items:center;gap:23px;cursor:pointer;box-shadow:0 4px 8px #174d4310;transition:background .2s,transform .2s}
+.welcome-join{background:none;border:0;color:var(--w-ink);font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:4px;cursor:pointer;min-height:44px;padding:12px 4px}
+.welcome-join:hover{color:#246557}
 .welcome-start:hover{background:#246557;transform:translateY(-2px)}
 .welcome-start svg{width:18px;height:18px}
 .welcome-sample{font-size:12px;font-weight:600;background:transparent;color:var(--w-ink);border:0;border-bottom:1px solid #bac5b2;border-radius:0;display:flex;align-items:center;gap:8px;padding:10px 0;cursor:pointer;transition:border-color .2s}

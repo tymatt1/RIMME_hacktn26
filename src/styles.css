@@ -1255,3 +1255,44 @@ select { cursor: pointer; }
 .packet-knowme { border-top: 1px solid var(--line); padding-top: 18px; }
 .packet-knowme h3 { margin: 0 0 6px; font-size: 16px; }
 @media (max-width: 640px) { .packet-list li { flex-direction: column; align-items: stretch; } .packet-list .button { justify-content: center; } }
+
+/* Family members, contact details and invites */
+.family-member { align-items: flex-start; flex-wrap: wrap; }
+.family-info { display: grid; gap: 3px; min-width: 0; flex: 1 1 0; }
+.family-member .family-info strong { color: var(--ink); font-size: 15px; font-weight: 600; }
+.family-member .family-info small { color: #5d6a58; font-size: 12px; margin-top: 0; line-height: 1.5; }
+.family-member .family-info small.family-contact { color: var(--ink); overflow-wrap: anywhere; }
+.family-member .family-info small.missing { color: #8a5a1f; }
+.you-tag { font-style: normal; font-weight: 400; color: #5d6a58; font-size: 12px; }
+.family-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.status-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; line-height: 1.6; background: #edeee6; color: #4f5a4c; }
+.status-joined { background: #e1ecd8; color: #2b5636; }
+.status-invited { background: #f6ecd2; color: #6f5010; }
+.status-private { background: #f2e4df; color: #70402f; }
+.family-member .family-side { margin-left: auto; display: grid; justify-items: end; gap: 4px; font-size: 12px; color: #5d6a58; }
+.family-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: flex-end; }
+.family-actions .text-button { font-size: 12px; padding: 4px 0; min-height: 36px; }
+.member-form-name { margin: 0 0 18px; display: grid; gap: 2px; }
+.member-form-name small { color: #5d6a58; font-size: 12px; }
+.check-row { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 20px; font-size: 13px; cursor: pointer; }
+.check-row input { margin-top: 4px; width: 18px; height: 18px; flex: none; accent-color: #3f6b4e; }
+.check-row strong { display: block; font-weight: 600; color: var(--ink); }
+.check-row small { display: block; color: #5d6a58; font-size: 12px; line-height: 1.5; }
+.invite-choice { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 4px; margin: 0 0 18px; display: grid; gap: 4px; }
+.invite-choice legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.invite-choice label { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 13px; cursor: pointer; }
+.invite-choice input { margin-top: 4px; width: 17px; height: 17px; flex: none; accent-color: #3f6b4e; }
+.invite-choice strong { display: block; font-weight: 600; color: var(--ink); }
+.invite-choice small { display: block; color: #5d6a58; font-size: 12px; line-height: 1.5; }
+.invite-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 30px; letter-spacing: 4px; text-align: center; padding: 16px; margin: 6px 0 18px; border: 1px dashed #9aa896; border-radius: 8px; background: #fbfaf3; color: var(--ink); user-select: all; }
+.invite-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
+.invite-actions .button { text-decoration: none; }
+.invite-ready .text-field input[readonly] { font-size: 12px; }
+.code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; }
+.invite-found { color: #2b5636; }
+.invite-missing { color: #8a5a1f; }
+@media (max-width: 640px) { .family-member .family-side { margin-left: 0; justify-items: start; width: 100%; } .family-actions { justify-content: flex-start; } .invite-code { font-size: 24px; } }
+
+.fixed-email { margin: 4px 0 0; min-height: 47px; display: flex; flex-direction: column; justify-content: center; font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
+.fixed-email small { color: #5d6a58; font-size: 12px; }
+.invite-ready .account-demo-note { color: #6a5517; font-size: 12px; line-height: 1.7; }

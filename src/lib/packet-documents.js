@@ -1,5 +1,6 @@
-import { baseDocument, clean, createPlanDocument, details, heading, ink, knowMeDraftBlocks, knowMeRows, muted, paragraph, planPdfFilename, recorded, row, tableLayout } from './plan-document.js'
+import { baseDocument, clean, createPlanDocument, details, heading, ink, knowMeDraftBlocks, knowMeRows, muted, paragraph, planPdfFilename, records, recorded, row, tableLayout } from './plan-document.js'
 import { comparisonPdfFilename, createComparisonDocument } from './comparison-document.js'
+import { handoffContacts, resolveFamily } from './family.js'
 import { packetListing } from './packet-meta.js'
 import { packingGroups } from '../data/packing.js'
 import { careQuestions } from '../data/prototype.js'
@@ -18,10 +19,20 @@ const relationshipText = (value) => {
   if (answer === 'Someone else') return 'Someone the family contact is helping'
   return `The resident is the family contact’s ${answer.toLowerCase()}`
 }
-// The family list starts with placeholder names ("Me", "Family"); only real names belong on a handoff sheet.
-const otherFamily = (data) => {
-  const skip = new Set(['me', 'family', clean(data.intake?.caregiverName).toLowerCase()])
-  return (Array.isArray(data.family) ? data.family : []).map(clean).filter((member) => member && !skip.has(member.toLowerCase()))
+// People the family agreed to share, with blanks the nursing home can fill by hand. Falls back to the plain name list for older data.
+const contactsTable = (data, intake) => {
+  const family = Array.isArray(data.familyContacts) ? data.familyContacts : resolveFamily({ members: data.family || [], intake })
+  const shared = handoffContacts(family)
+  const people = shared.length ? shared : [{ displayName: clean(intake.caregiverName), role: 'main', relationship: '', phone: '', email: '' }]
+  const blank = { text: ' ', margin: [0, 6, 0, 6] }
+  const rows = people.map((person) => [
+    { text: [clean(person.displayName || person.name) || ' ', ...(person.role === 'main' ? [{ text: '  main contact', fontSize: 8.5, color: muted }] : [])], bold: true },
+    clean(person.relationship) ? { text: clean(person.relationship), fontSize: 9.5 } : blank,
+    clean(person.phone) ? { text: clean(person.phone), fontSize: 9.5 } : blank,
+    clean(person.email) ? { text: clean(person.email), fontSize: 9.5 } : blank,
+  ])
+  const spare = Math.max(0, 3 - rows.length)
+  return records(['Name', 'Relationship to resident', 'Phone', 'Email'], [...rows, ...Array.from({ length: spare }, () => [blank, blank, blank, blank])], [100, 105, 95, '*'])
 }
 const checkbox = (checked) => ({ canvas: [{ type: 'rect', x: 0, y: 1, w: 11, h: 11, lineWidth: 1, lineColor: ink, ...(checked ? { color: ink } : {}) }], width: 14 })
 
@@ -43,7 +54,7 @@ export function createHandoffDocument(data = {}, { generatedAt = new Date() } = 
       row('Current setting', intake.currentSetting), row('Planned move or discharge date', intake.dischargeDate || intake.timing), row('Type of stay', intake.stayType),
       ...(intake.currentSetting === 'Hospital' ? [row('Hospital admission status', intake.hospitalStatus)] : []),
     ])),
-    section('Family contact', details([row('Main family contact', intake.caregiverName), row('Relationship', relationshipText(intake.relationship)), blankRow('Phone'), blankRow('Email'), otherFamily(data).length ? row('Other family helping', otherFamily(data)) : blankRow('Other family helping (names and phone)')])),
+    section('Family contacts', ...(clean(intake.relationship) ? [details([row('Relationship', relationshipText(intake.relationship))])] : []), contactsTable(data, intake), note('Listed by the family. Please confirm the best way to reach each person.', [0, 0, 0, 4])),
     section('Daily support needs (family-reported)', details([
       row('Mobility', intake.mobility), row('Bed and chair transfers', intake.transferHelp),
       ...Object.entries(intake.dailySupport || {}).map(([key, value]) => row(activityLabels[key] || key, value)),

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createChecklistDocument, createHandoffDocument, createQuestionsDocument, packetItems } from './packet-documents.js'
 import { packetListing, packetUnavailableReason } from './packet-meta.js'
+import { resolveFamily } from './family.js'
 
 const intake = {
   personName: 'Margaret Ellis', caregiverName: 'Dana Ellis', relationship: 'Parent', ageRange: '80-89', language: 'English',
@@ -9,11 +10,18 @@ const intake = {
   dailySupport: { bathing: 'Some help', eating: 'Independent' }, memorySupport: 'Mild forgetfulness',
   budget: 7500, priorityWeights: { 'Close to family': 90, Staffing: 40, 'Inspection information': 50, 'Quality of care': 50, 'Costs & coverage': 80 },
 }
+const members = ['Dana Ellis', 'Family', 'Sam Ellis', 'Pat Ellis', 'Lee Ellis']
+const contacts = {
+  'Dana Ellis': { relationship: 'Daughter', phone: '(615) 555-0100', email: 'dana@example.com' },
+  'Sam Ellis': { relationship: 'Son', phone: '(615) 555-0111' },
+  'Pat Ellis': { relationship: 'Sibling', phone: '(615) 555-0122', shareWithHome: false },
+}
 const home = (id, extra = {}) => ({ id, name: `Home ${id}`, questions: [`Is there a waitlist at Home ${id}?`], ...extra })
 const data = {
   intake,
   facilities: [home(1), home(2, { isFictional: true })],
-  family: ['Me', 'Family', 'Dana Ellis', 'Sam Ellis'],
+  family: members,
+  familyContacts: resolveFamily({ members, contacts, intake }),
   checklist: [
     { id: 'a', label: 'Call the insurer', detail: 'Ask about coverage', completed: true, assignedTo: 'Dana' },
     { id: 'b', label: 'Tour two homes', completed: false, assignedTo: 'Unassigned' },
@@ -36,13 +44,41 @@ test('handoff document records family answers and leaves blanks for medical deta
   assert.match(text, /not a medical record/)
 })
 
-test('handoff document words the relationship from the contact’s side and skips placeholder family names', () => {
-  const text = flat(createHandoffDocument(data))
-  assert.match(text, /The resident is the family contact’s parent/)
-  assert.match(text, /Sam Ellis/)
-  assert.doesNotMatch(text, /"Me"|"Family"|Dana Ellis, /)
-  assert.match(flat(createHandoffDocument({ ...data, family: ['Me', 'Family'] })), /Other family helping \(names and phone\)/)
+test('handoff document words the relationship from the contact’s side', () => {
+  assert.match(flat(createHandoffDocument(data)), /The resident is the family contact’s parent/)
   assert.match(flat(createHandoffDocument({ ...data, intake: { ...intake, relationship: 'Myself' } })), /The family contact is the resident/)
+})
+
+test('handoff document lists the main contact and shared family with their contact details', () => {
+  const text = flat(createHandoffDocument(data))
+  assert.match(text, /Family contacts/)
+  assert.match(text, /Dana Ellis/)
+  assert.match(text, /\(615\) 555-0100/)
+  assert.match(text, /dana@example\.com/)
+  assert.match(text, /Sam Ellis/)
+  assert.match(text, /\(615\) 555-0111/)
+})
+
+test('handoff document leaves out people marked private, people with no contact details, and the Family placeholder', () => {
+  const text = flat(createHandoffDocument(data))
+  assert.doesNotMatch(text, /Pat Ellis|555-0122/)
+  assert.doesNotMatch(text, /Lee Ellis/)
+  assert.doesNotMatch(text, /"Family"/)
+})
+
+test('handoff document keeps blank lines for the nursing home to add contacts by hand', () => {
+  const doc = createHandoffDocument({ ...data, familyContacts: resolveFamily({ members: ['Dana Ellis', 'Family'], intake }) })
+  const tables = []
+  const walk = (node) => { if (Array.isArray(node)) node.forEach(walk); else if (node && typeof node === 'object') { if (node.table?.body?.[0]?.[0]?.text === 'Name') tables.push(node.table); Object.values(node).forEach(walk) } }
+  walk(doc.content)
+  assert.equal(tables.length, 1)
+  assert.equal(tables[0].body.length, 4)
+})
+
+test('handoff document falls back to the caregiver name when there is no family list', () => {
+  const text = flat(createHandoffDocument({ intake }))
+  assert.match(text, /Dana Ellis/)
+  assert.match(text, /main contact/)
 })
 
 test('handoff document does not share the budget or the family priorities', () => {

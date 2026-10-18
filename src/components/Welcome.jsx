@@ -85,7 +85,7 @@ const steps = [
   { number: '03', title: 'Prepare for move-in', detail: 'Assign tasks and prepare a profile of the person moving into care.' },
 ]
 
-export default function Welcome({ onStart, onSignIn, accountControls, onResume, resumeLabel = 'Open my plan' }) {
+export default function Welcome({ onStart, onSignIn, onJoin, accountControls, onResume, resumeLabel = 'Open my plan' }) {
   return (
     <div className="welcome-page">
       <a className="welcome-skip" href="#welcome-main">Skip to content</a>
@@ -101,6 +101,7 @@ export default function Welcome({ onStart, onSignIn, accountControls, onResume, 
             <p className="welcome-description">When a family member needs nursing home care, there’s a lot to work out. Carebridge helps you compare homes and keep track of what needs to happen before move-in.</p>
             <div className="welcome-buttons">
               <button type="button" className="welcome-start" onClick={onResume || onStart}>{onResume ? resumeLabel : 'Create a transition plan'} <Arrow /></button>
+              {onJoin && <button type="button" className="welcome-join" onClick={onJoin}>Join a family plan</button>}
             </div>
           </div>
 

@@ -12,7 +12,9 @@ import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } fr
 import { api } from './lib/api.js'
 import { normalizePriorityWeights } from './lib/priorities.js'
 import { packetListing } from './lib/packet-meta.js'
-import { accountDraftKey, createDemoAccount, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount } from './lib/demo-accounts.js'
+import { accountDraftKey, acceptInvite, cancelInvite, createDemoAccount, createInvite, familyLinks, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount, updateAccountContact } from './lib/demo-accounts.js'
+import { FamilyList, InviteReady, JoinForm, MemberForm } from './components/FamilyUI.jsx'
+import { inviteCodeFromSearch, inviteLink, inviteMailto, isGroupMember, isValidEmail, isValidPhone, normalizeContact, resolveFamily } from './lib/family.js'
 import { facilityFromApi, guidanceFromResponse, intakeKey, toBackendIntake, toKnowMeBody, categoryLabels, liveFilters, knowMeSections, scoreWeights, matchScore, needsProfile, weightShares, scoreReasons } from './lib/api-model.js'
 import { LiveOverview, LiveInspection } from './components/FacilityLive.jsx'
 import { ScoreHeader, StrengthWatch, ScoreBanner } from './components/ScoreUI.jsx'
@@ -186,6 +188,8 @@ export default function App() {
   const [initialSession] = useState(loadDemoSession)
   const stored = initialSession.draft
   const [accountId, setAccountId] = useState(initialSession.accountId)
+  const [planId, setPlanId] = useState(initialSession.planId || null)
+  const [accountName, setAccountName] = useState(initialSession.accountName || '')
   const [legacyActive, setLegacyActive] = useState(Boolean(stored && !initialSession.accountId))
   const [authError, setAuthError] = useState('')
   const [page, setPage] = useState(stored ? (stored.page === 'welcome' ? 'welcome' : resumePage(stored)) : 'welcome')
@@ -195,9 +199,12 @@ export default function App() {
   const [completed, setCompleted] = useState(stored?.completed || [])
   const [profile, setProfile] = useState(stored?.profile || { morning: '', interests: [], comforts: [], communication: [], notes: '', aiDraft: null })
   const [members, setMembers] = useState(stored?.members || ['Me', 'Family'])
+  const [contacts, setContacts] = useState(stored?.contacts || {})
+  const [links, setLinks] = useState(() => familyLinks(initialSession.planId, initialSession.accountId))
   const [assignees, setAssignees] = useState(stored?.assignees || {})
   const [chosenFacility, setChosenFacility] = useState(stored?.chosenFacility || '')
-  const [modal, setModal] = useState(null)
+  const [joinCode] = useState(() => { try { return inviteCodeFromSearch(window.location.search) } catch { return '' } })
+  const [modal, setModal] = useState(() => (joinCode ? { type: 'join' } : null))
   const [onboardingComplete, setOnboardingComplete] = useState(stored?.onboardingComplete || false)
   const [preferenceDraft, setPreferenceDraft] = useState(null)
   const [profileDraft, setProfileDraft] = useState(null)
@@ -247,6 +254,10 @@ export default function App() {
   const shares = weightShares(weights, { distance: live && catalogState.resolved })
   const rankIds = live ? [...listed].filter((f) => f.match !== null).sort((a, b) => b.match - a.match || a.name.localeCompare(b.name)).map((f) => f.id) : []
   const savedHomes = catalog.filter((f) => shortlist.includes(f.id))
+  const linkedAccounts = { ...(members[0] && links.owner ? { [members[0]]: links.owner } : {}), ...Object.fromEntries(Object.entries(links.byMember).filter(([, link]) => link.account).map(([member, link]) => [member, link.account])) }
+  const inviteStatus = Object.fromEntries(Object.entries(links.byMember).map(([member, link]) => [member, link.status]))
+  const family = resolveFamily({ members, contacts, linked: linkedAccounts, status: inviteStatus, intake })
+  const youName = links.isOwner ? members[0] : links.you
   const packet = packetListing({ facilities: savedHomes })
   // Apply new priority sliders from the results tab: remember today's order, reload the homes, then re-rank.
   const applyPriorities = (next) => {
@@ -261,8 +272,15 @@ export default function App() {
   const closeModal = () => setModal(null)
   useEffect(() => {
     if (!accountId && !legacyActive) return
-    setStorageSaved(saveDraft({ page, returnPage: page === 'welcome' ? returnPage : page, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance }, accountId ? accountDraftKey(accountId) : undefined))
-  }, [accountId, legacyActive, page, returnPage, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance])
+    setStorageSaved(saveDraft({ page, returnPage: page === 'welcome' ? returnPage : page, onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance }, accountId ? accountDraftKey(planId || accountId) : undefined))
+  }, [accountId, planId, legacyActive, page, returnPage, onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance])
+  // Invites and linked accounts are kept apart from the plan, so another tab or account can change them. Re-read them when this tab regains focus.
+  useEffect(() => {
+    const refresh = () => setLinks(familyLinks(planId, accountId))
+    refresh()
+    window.addEventListener('storage', refresh); window.addEventListener('focus', refresh)
+    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh) }
+  }, [planId, accountId, planTab])
   useEffect(() => { setAuthError('') }, [modal?.type])
   useEffect(() => {
     document.title = page === 'welcome' ? 'carebridge | Nursing home transition planning' : `${headings[page][1]} | carebridge`
@@ -321,21 +339,26 @@ export default function App() {
     accountEpoch.current += 1
     setReturnPage(resumePage(draft))
     setIntake(draft.intake || blankIntake()); setShortlist(draft.shortlist || []); setCompleted(draft.completed || [])
-    setProfile(draft.profile || freshAccountPlan('You').profile); setMembers(draft.members || ['Me', 'Family']); setAssignees(draft.assignees || {})
+    setProfile(draft.profile || freshAccountPlan('You').profile); setMembers(draft.members || ['Me', 'Family']); setContacts(draft.contacts || {}); setAssignees(draft.assignees || {})
     setChosenFacility(draft.chosenFacility || ''); setGuidance(draft.guidance || null); setOnboardingComplete(Boolean(draft.onboardingComplete))
     setGuidanceState('idle'); setKnowMeState('idle'); setAskState({ ccn: '', question: '', status: 'idle', answer: null })
     setCatalogState({ source: 'loading', list: [], center: null, resolved: true }); setFacilityDetails({}); setSort('score'); setProgram('All sample options')
     setPlanTab('Checklist'); setDetailTab('Overview'); setPreferenceDraft(null); setPreferenceStep(0); setConfirmPreferences(false); setModal(null)
   }
+  function applySession(session) {
+    setAccountId(session?.accountId || null); setPlanId(session?.planId || null); setAccountName(session?.accountName || ''); setLegacyActive(false)
+    setLinks(familyLinks(session?.planId || null, session?.accountId || null))
+  }
   function signOut() {
     try { signOutDemoAccount() } catch { setNotice('Your browser could not save the sign-out. Please enable browser storage and try again.'); return }
-    setAccountId(null); setLegacyActive(false); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('Signed out.')
+    applySession(null); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('Signed out.')
   }
   function sample() {
     try { signOutDemoAccount() } catch { /* Viewing an example does not require storage. */ }
-    setAccountId(null); setLegacyActive(false); restorePlan(freshAccountPlan('Maria'))
+    applySession(null); restorePlan(freshAccountPlan('Maria'))
     setIntake({ ...blankIntake(), ...sampleIntake, coverage: ['Medicare', 'Not sure about other coverage'] })
     setShortlist([]); setCompleted([]); setChosenFacility(''); setAssignees({}); setMembers(['Maria', 'Daniel', 'Family'])
+    setContacts({ Maria: { relationship: 'Grandchild', phone: '(615) 555-0142', email: 'maria@example.com', shareWithHome: true }, Daniel: { relationship: 'Son', phone: '(615) 555-0178', email: 'daniel@example.com', shareWithHome: true } })
     setProfile({ morning: 'Slow start', interests: ['Music', 'Gardening', 'Being with family'], comforts: ['Family photos', 'Favorite music', 'Knowing the plan'], communication: ['Face me when speaking', 'Give me time to respond'], notes: 'Arthur loves jazz and stories about his garden. A calm explanation before a change of plans helps him feel comfortable.', aiDraft: null })
     setOnboardingComplete(true); setModal(null); setPage('overview'); setNotice('Example profile loaded.')
   }
@@ -355,7 +378,7 @@ export default function App() {
     setKnowMeState('loading')
     try { const data = await api.draftKnowMe(guidance.planId, toKnowMeBody(profile, intake.personName.trim())); if (epoch !== accountEpoch.current) return; setProfile((current) => ({ ...current, aiDraft: data.know_me })); setKnowMeState('ready'); setNotice('Know Me draft ready. Review and edit it before sharing.') } catch { if (epoch === accountEpoch.current) setKnowMeState('error') }
   }
-  const planData = () => ({ intake, facilities: savedHomes, planningFacility: selectedHome || null, checklist: tasks.map((task) => ({ ...task, completed: completed.includes(task.id), assignedTo: assignees[task.id] || 'Unassigned' })), checkedPackingItems: completed.filter((id) => id.startsWith('packing-')), family: members, knowMe: profile, aiAssistedChecklist: Boolean(guidance?.tasks?.length), careTeamQuestions: guidanceReady && guidance.questions.length ? guidance.questions : summary.questions, careExplainer: guidanceReady ? guidance.explainer : '' })
+  const planData = () => ({ intake, facilities: savedHomes, planningFacility: selectedHome || null, checklist: tasks.map((task) => ({ ...task, completed: completed.includes(task.id), assignedTo: assignees[task.id] || 'Unassigned' })), checkedPackingItems: completed.filter((id) => id.startsWith('packing-')), family: members, familyContacts: family, knowMe: profile, aiAssistedChecklist: Boolean(guidance?.tasks?.length), careTeamQuestions: guidanceReady && guidance.questions.length ? guidance.questions : summary.questions, careExplainer: guidanceReady ? guidance.explainer : '' })
   async function download(kind = 'plan') {
     if (exporting) return
     setExporting(true)
@@ -390,11 +413,53 @@ export default function App() {
       setNotice('The comparison PDF could not be created. Please try again.')
     } finally { setExporting(false) }
   }
+  const inviteBase = () => `${window.location.origin}${window.location.pathname}`
+  const clearJoinParam = () => { try { if (window.location.search) window.history.replaceState(null, '', window.location.pathname) } catch { /* The address bar is cosmetic. */ } }
+  async function copyText(text, message) {
+    try { await window.navigator.clipboard.writeText(text); setNotice(message) } catch { setNotice('Copying isn’t available here. Select the text and copy it.') }
+  }
+  function startInvite(person) {
+    try { createInvite(planId, { memberName: person.name, relationship: person.relationship, email: person.email }) } catch (error) { setNotice(error.message); return }
+    setLinks(familyLinks(planId, accountId)); setModal({ type: 'invite', name: person.name })
+  }
+  // Adds a person or updates their details. Returns a message to show in the form when something is wrong.
+  function saveMember(values, existing) {
+    const person = existing ? existing.name : values.name
+    if (!existing) {
+      if (!person) return 'Enter a first name or nickname.'
+      if (person === 'Unassigned' || isGroupMember(person) || members.some((m) => m.toLowerCase() === person.toLowerCase())) return 'Please choose a different name.'
+    }
+    if (values.phone && !isValidPhone(values.phone)) return 'Enter a phone number with at least 7 digits, or leave it blank.'
+    if (values.email && !isValidEmail(values.email)) return 'Enter an email address like daniel@example.com.'
+    const contact = normalizeContact({ relationship: values.relationship, phone: values.phone, email: existing?.hasAccount ? existing.email : values.email, shareWithHome: values.shareWithHome })
+    try {
+      if (existing?.hasAccount) updateAccountContact(existing.email, { phone: contact.phone, relationship: contact.relationship })
+      if (values.invite) createInvite(planId, { memberName: person, relationship: contact.relationship, email: contact.email })
+    } catch (error) { return error.message }
+    if (!existing) setMembers([...members, person])
+    setContacts({ ...contacts, [person]: contact })
+    setLinks(familyLinks(planId, accountId))
+    if (values.invite) setModal({ type: 'invite', name: person })
+    else { setModal(null); setNotice(existing ? 'Contact details saved.' : `${person} was added to the family list.`) }
+    return undefined
+  }
+  function removeInvite(code) {
+    try { cancelInvite(planId, code) } catch (error) { setNotice(error.message); return }
+    setLinks(familyLinks(planId, accountId)); setModal(null); setNotice('Invite canceled.')
+  }
+  function joinPlan(values) {
+    try {
+      const session = acceptInvite(values.code, values)
+      applySession(session); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); clearJoinParam()
+      setNotice('You joined the family plan. Your contact details were added.')
+      return undefined
+    } catch (error) { return error.message || 'We couldn’t join this plan. Please try again.' }
+  }
   function auth(e) {
     e.preventDefault(); const data = new FormData(e.currentTarget)
     try {
-      const session = modal.type === 'account' ? createDemoAccount(data.get('email'), String(data.get('name') || '')) : signInDemoAccount(data.get('email'))
-      setAccountId(session.accountId); setLegacyActive(false); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); setNotice(modal.type === 'account' ? 'Your new plan is ready. Let’s get started.' : 'Your saved plan is open.')
+      const session = modal.type === 'account' ? createDemoAccount(data.get('email'), String(data.get('name') || ''), String(data.get('phone') || '')) : signInDemoAccount(data.get('email'))
+      applySession(session); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); setNotice(modal.type === 'account' ? 'Your new plan is ready. Let’s get started.' : 'Your saved plan is open.')
     } catch (error) { setAuthError(error.message || 'We couldn’t open this demo plan. Please try again.') }
   }
   function actions(previous, next, label = 'Continue') {
@@ -420,11 +485,11 @@ export default function App() {
   function help(topic = 'Start here') { setHelpTopic(topic); setModal({ type: 'help' }) }
   function goHome() { setReturnPage(page); setPage('welcome') }
   return <>
-    {page === 'welcome' ? <Welcome onStart={() => setModal({ type: 'account' })} onSignIn={() => setModal({ type: 'signin' })} accountControls={(accountId || legacyActive) && <ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} />} onResume={(accountId || legacyActive) ? () => setPage(returnPage) : undefined} resumeLabel={onboardingComplete ? 'Open my plan' : 'Continue setup'} /> : <div className={`app-shell ${step >= 0 ? 'onboarding-shell' : ''}`} inert={modal ? true : undefined}>
+    {page === 'welcome' ? <Welcome onStart={() => setModal({ type: 'account' })} onSignIn={() => setModal({ type: 'signin' })} onJoin={() => setModal({ type: 'join' })} accountControls={(accountId || legacyActive) && <ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} />} onResume={(accountId || legacyActive) ? () => setPage(returnPage) : undefined} resumeLabel={onboardingComplete ? 'Open my plan' : 'Continue setup'} /> : <div className={`app-shell ${step >= 0 ? 'onboarding-shell' : ''}`} inert={modal ? true : undefined}>
       <a className="skip-link" href="#main">Skip to content</a>
       {step < 0 && <aside className="sidebar"><CarebridgeLogo onClick={goHome} /><nav className="primary-navigation" aria-label="Your plan navigation">{nav.map(([id, label]) => <button className={`primary-nav-link section-${id} ${page === id ? 'active' : ''}`} key={id} aria-label={label} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}><span className="primary-nav-label">{label}</span></button>)}</nav></aside>}
       <div className="workspace">
-        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of {intakeSteps.length}</span><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /></div></> : <div className="account-controls"><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
+        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of {intakeSteps.length}</span><ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /></div></> : <div className="account-controls"><ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
         <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : 'Download full plan'}</button>}</div>
           {step >= 0 && <IntakeProgress step={step} onChange={(i) => setPage(intakeSteps[i][0])} />}
 
@@ -454,7 +519,7 @@ export default function App() {
             <div className="plan-layout"><section role="tabpanel" aria-labelledby={`tab-${planTab.replaceAll(' ', '-')}`} className="panel plan-panel">
               {planTab === 'Checklist' && <><div className="section-title-row"><div><h2>Move-in checklist</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Based on your answers. Typical items: confirm with your facility. Medicare and Medicaid details change, so verify them at Medicare.gov or your state Medicaid agency.</p>{guidanceStatus === 'loading' && !guidance && <p className="field-hint" role="status">Building your checklist…</p>}<div className="task-list">{tasks.map((task, i) => { const soon = guidance?.tasks?.length ? task.priority === 1 : i < 2; return <div className={`task-row ${completed.includes(task.id) ? 'done' : ''}`} key={task.id}><label><input type="checkbox" checked={completed.includes(task.id)} onChange={() => toggleDone(task.id)} /><span><strong>{task.label}</strong><small>{task.detail}</small><span className={`task-timing ${soon ? 'soon' : ''}`}>{soon ? 'Start here' : 'Before move-in'}</span>{task.category && <span className="task-category">{categoryLabels[task.category] || task.category}</span>}</span></label><label className="task-owner"><span className="sr-only">Assign: {task.label}</span><select value={assignees[task.id] || 'Unassigned'} onChange={(e) => { setAssignees({ ...assignees, [task.id]: e.target.value }); patchTask(task.id, { assignee: e.target.value }) }}><option>Unassigned</option>{members.map((m) => <option key={m}>{m}</option>)}</select></label></div> })}</div></>}
               {planTab === 'Documents & packing' && <><h2>Documents and packing</h2><p className="field-hint">Ask the facility which documents to bring and which supplies it provides.</p>{packingGroups.map(([title, items], group) => <div className="packing-group" key={title}><h3>{title}</h3>{items.map((item, i) => <label className="packing-item" key={item}><input type="checkbox" checked={completed.includes(`packing-${group}-${i}`)} onChange={() => toggleDone(`packing-${group}-${i}`)} />{item}</label>)}</div>)}</>}
-              {planTab === 'Family' && <><div className="section-title-row"><div><h2>Family members</h2></div><button className="button secondary small" onClick={() => setModal({ type: 'member' })}><Icon name="plus" size={16} />Add family member</button></div><p className="field-hint">Add sample names, then assign checklist tasks. No invitations are sent.</p><div className="family-list">{members.map((m, i) => <div className="family-member" key={m}><span className={`member-avatar member-${i % 3}`}>{m[0]}</span><span><strong>{m}</strong><small>{i === 0 ? 'Main family contact' : 'Family member'}</small></span><span>{tasks.filter((t) => assignees[t.id] === m).length} tasks</span></div>)}</div><div className="gentle-callout"><Icon name="heart" /><p>Include {name} in conversations and choices wherever possible. A plan works best when it reflects their wishes.</p></div><button className="text-button" onClick={() => setPlanTab('Checklist')}>Assign tasks in your checklist <Icon name="arrow" size={16} /></button></>}
+              {planTab === 'Family' && <><div className="section-title-row"><div><h2>Family members</h2></div><button className="button secondary small" onClick={() => setModal({ type: 'member' })}><Icon name="plus" size={16} />Add family member</button></div><p className="field-hint">Add family and their contact details. People you mark are listed on the sheet for the nursing home. You can also invite someone to Carebridge so they can see and update this plan. Anyone listed can be given checklist tasks.</p><FamilyList family={family} canInvite={Boolean(planId)} youName={youName} taskCounts={Object.fromEntries(members.map((m) => [m, tasks.filter((t) => assignees[t.id] === m).length]))} onEdit={(person) => setModal({ type: 'member-edit', name: person.name })} onInvite={startInvite} onShowInvite={(person) => setModal({ type: 'invite', name: person.name })} /><div className="gentle-callout"><Icon name="heart" /><p>Include {name} in conversations and choices wherever possible. A plan works best when it reflects their wishes.</p></div><button className="text-button" onClick={() => setPlanTab('Checklist')}>Assign tasks in your checklist <Icon name="arrow" size={16} /></button></>}
               {planTab === 'Downloads' && <><div className="section-title-row"><div><h2>Your move-in packet</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Everything you may want to hand over or take along. Files are made in your browser and are not uploaded anywhere. Review each one before sharing it.</p>
                 <div className="packet-actions"><button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : `Download full plan (${packet.filter((item) => item.available).length} files)`}</button><span className="field-hint">Your browser may ask to allow multiple downloads. Choose Allow.</span></div>
                 <ul className="packet-list">{packet.map((item) => <li key={item.id}><div><strong>{item.title}</strong><small>{item.description}</small>{!item.available && <small className="packet-unavailable">{item.unavailableReason}</small>}</div><button className="button secondary small" disabled={exporting || !item.available} onClick={() => downloadPacket([item.id])}><Icon name="download" size={15} />Download</button></li>)}</ul>
@@ -469,6 +534,7 @@ export default function App() {
       <form onSubmit={auth} className="account-form" autoComplete="off">
         {modal.type === 'account' && <label className="text-field">Your first name<input name="name" placeholder="e.g. Maria" required maxLength={50} /></label>}
         <label className="text-field">Demo email<input name="email" type="email" placeholder="maria@example.com" required autoComplete="off" /></label>
+        {modal.type === 'account' && <label className="text-field">Phone<span className="optional">So the nursing home can reach you</span><input name="phone" type="tel" inputMode="tel" maxLength={30} placeholder="(615) 555-0142" autoComplete="off" /></label>}
         <label className="text-field">Demo password<input name="password" type="password" placeholder="Use any made-up password" required autoComplete="new-password" minLength={4} /></label>
         <p className="field-hint">Your demo email identifies your saved plan on this device. Passwords are not checked, saved, or sent anywhere. This is a simulated account.</p>
         {authError && <p className="account-error" role="alert">{authError}</p>}
@@ -477,18 +543,22 @@ export default function App() {
       {loadDraft() && <button className="text-button account-switch" onClick={() => {
         let previous
         try { previous = openPreviousDemoPlan() } catch { setAuthError('Your browser could not open the previous plan.'); return }
-        setAccountId(null); setLegacyActive(true); restorePlan(previous); setPage(resumePage(previous))
+        applySession(null); setLegacyActive(true); restorePlan(previous); setPage(resumePage(previous))
       }}>Open the previous unlinked plan on this device</button>}
       <div className="account-divider"><span>or view a completed example</span></div>
       <button className="button secondary full" onClick={sample}>See an example profile.</button>
       <button className="text-button account-switch" onClick={() => setModal({ type: modal.type === 'account' ? 'signin' : 'account' })}>{modal.type === 'account' ? 'Already have a plan? Sign in' : 'New here? Start a plan'}</button>
+      <button className="text-button account-switch" onClick={() => setModal({ type: 'join' })}>Have an invite code? Join a family plan</button>
     </Dialog>}
     {modal?.type === 'preferences' && <Dialog wide className="preferences-dialog" title={confirmPreferences ? 'Save your changes?' : 'My preferences'} subtitle={confirmPreferences ? undefined : 'Review your situation, everyday support, family priorities, and Know Me profile.'} onClose={confirmPreferences ? () => setConfirmPreferences(false) : requestClosePreferences}>
       {confirmPreferences ? <div className="unsaved-confirmation"><p>Save your updates before closing, or discard them to keep your previous answers.</p><div className="confirmation-actions"><button className="button primary" onClick={savePreferences}>Save changes</button><button className="button secondary" onClick={() => { setModal(null); setConfirmPreferences(false) }}>Discard changes</button><button className="text-button" onClick={() => setConfirmPreferences(false)}>Keep editing</button></div></div> : <><div className="preferences-section-label"><Icon name="settings" size={18} />My preferences</div><IntakeProgress step={preferenceStep} onChange={setPreferenceStep} /><h3 className="preferences-step-heading">{headings[intakeSteps[preferenceStep][0]][1]}</h3><IntakeWorkflow page={intakeSteps[preferenceStep][0]} intake={preferenceDraft} patch={patchPreferences} profile={profileDraft} patchProfile={(values) => setProfileDraft((current) => ({ ...current, ...values }))} actions={preferenceActions} editing /></>}
     </Dialog>}
     {activeFacility && <Dialog title={activeFacility.name} subtitle={activeFacility.isFictional ? 'Fictional sample facility · no live availability or provider data' : 'CMS Care Compare data · no live availability or costs'} onClose={closeModal} wide>{activeFacility.isFictional && <Building variant={facilities.indexOf(activeFacility)} />}<Tabs items={['Overview', 'Inspection', 'Call questions']} value={detailTab} onChange={setDetailTab} label="Facility details" /><div role="tabpanel" aria-labelledby={`tab-${detailTab.replaceAll(' ', '-')}`} className="facility-dialog-content">{detailTab === 'Overview' && !activeFacility.isFictional && <LiveOverview f={activeFacility} />}{detailTab === 'Overview' && activeFacility.isFictional && <><p>{activeFacility.description}</p><div className="detail-facts">{[['Example distance', `${activeFacility.distance} miles`], ['Sample nursing hours', `${activeFacility.staffingHours} / resident / day`], ['Example languages', activeFacility.languages.join(', ')], ['Example room options', activeFacility.roomOptions.join(', ')]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><h3>Services shown in this example</h3><div className="facility-features">{activeFacility.provides.map((v) => <span key={v}>{v}</span>)}</div><div className="gentle-callout"><Icon name="clock" /><p>Confirm openings, support needs, coverage, and costs. None have been verified in this prototype.</p></div></>}{detailTab === 'Inspection' && !activeFacility.isFictional && <LiveInspection f={activeFacility} detail={facilityDetails[activeFacility.ccn]} ask={askState} onAsk={askFacility} />}{detailTab === 'Inspection' && activeFacility.isFictional && <><span className="draft-badge">ILLUSTRATIVE REPORT</span><h3>{activeFacility.inspectionLabel}</h3><p>{activeFacility.inspectionNote}</p><div className="question-highlight">Ask: “What was identified in the most recent inspection, and what has changed since?”</div><a className="text-link" href="https://www.medicare.gov/care-compare/" target="_blank" rel="noreferrer">Look up real records on Medicare Care Compare <Icon name="external" size={15} /></a></>}{detailTab === 'Call questions' && <><p className="field-hint">A starting script for your family. This demo does not place calls.</p><p className="call-script">“Hello, I’m helping {name} explore a nursing home stay. Could we talk through a few questions?”</p><ol className="question-list">{[...activeFacility.questions, 'Do you have an opening for our possible move date?', 'Who can explain the costs and coverage for our situation?'].map((q) => <li key={q}>{q}</li>)}</ol></>}</div><div className="dialog-actions"><button className="button secondary" aria-pressed={shortlist.includes(activeFacility.id)} onClick={() => toggleSaved(activeFacility.id)}><Icon name="heart" size={17} />{shortlist.includes(activeFacility.id) ? 'Saved to shortlist' : 'Save this place'}</button><button className="button primary" onClick={() => { setChosenFacility(activeFacility.id); setShortlist((current) => current.includes(activeFacility.id) ? current : [...current, activeFacility.id]); setPage('plan'); setModal(null); setNotice(activeFacility.isFictional ? 'Sample facility added to your draft plan. No booking has been made.' : 'Facility added to your draft plan as a planning reference. No booking has been made.') }}>Use in my draft plan <Icon name="arrow" size={17} /></button></div></Dialog>}
     {modal?.type === 'comparison' && <Dialog title="Your shortlist, side by side" wide className="comparison-dialog" onClose={closeModal}><FacilityComparison homes={savedHomes} onDetails={(id) => details(id)} onDownload={downloadComparison} exporting={exporting} /></Dialog>}
-    {modal?.type === 'member' && <Dialog title="Add a family member" subtitle="Add a sample family member. No invitation will be sent." onClose={closeModal}><form className="account-form" onSubmit={(e) => { e.preventDefault(); const value = String(new FormData(e.currentTarget).get('member')).trim(); if (!value) return; if (value === 'Unassigned' || members.some((m) => m.toLowerCase() === value.toLowerCase())) { setNotice('Please choose a different name.'); return } setMembers([...members, value]); setModal(null); setNotice(`${value} was added to the family list.`) }}><label className="text-field">First name or nickname<input name="member" required maxLength={40} placeholder="e.g. Daniel" /></label><button className="button primary" type="submit">Add family member <Icon name="plus" size={17} /></button></form></Dialog>}
+    {modal?.type === 'member' && <Dialog title="Add a family member" subtitle="Add their contact details, and invite them to Carebridge if you like." onClose={closeModal}><MemberForm canInvite={Boolean(planId)} residentName={name} onSubmit={(values) => saveMember(values, null)} /></Dialog>}
+    {modal?.type === 'member-edit' && family.find((person) => person.name === modal.name) && <Dialog title="Contact details" subtitle="Used on the nursing-home sheet and in your plan." onClose={closeModal}><MemberForm person={family.find((person) => person.name === modal.name)} canInvite={Boolean(planId)} residentName={name} onSubmit={(values) => saveMember(values, family.find((person) => person.name === modal.name))} /></Dialog>}
+    {modal?.type === 'invite' && links.byMember[modal.name] && <Dialog title={`Invite ${modal.name}`} subtitle="Share the link or the code." onClose={closeModal}><InviteReady invite={{ memberName: modal.name, code: links.byMember[modal.name].code }} link={inviteLink(inviteBase(), links.byMember[modal.name].code)} ownerName={links.owner?.name} mailto={family.find((person) => person.name === modal.name)?.email ? inviteMailto({ email: family.find((person) => person.name === modal.name).email, ownerName: links.owner?.name, link: inviteLink(inviteBase(), links.byMember[modal.name].code), code: links.byMember[modal.name].code }) : ''} onCopy={copyText} onCancel={() => removeInvite(links.byMember[modal.name].code)} /></Dialog>}
+    {modal?.type === 'join' && <Dialog title="Join a family plan" subtitle="Register with your own contact details to see and update a family’s plan." onClose={() => { clearJoinParam(); closeModal() }}><div className="account-demo-note"><Icon name="shield" size={18} />Demo only.</div><JoinForm initialCode={joinCode} onSubmit={joinPlan} /><button className="text-button account-switch" onClick={() => { clearJoinParam(); setModal({ type: 'signin' }) }}>Already registered? Sign in</button></Dialog>}
     {modal?.type === 'profile' && <Dialog title={`Hello, I’m ${name}.`} subtitle="Know Me · a family-written draft to review together" onClose={closeModal}><div className="know-me-preview"><span className="profile-flower"><Icon name="sun" size={46} /></span><p>Review these details with {name} before sharing them with staff.</p>{[['My morning routine', profile.morning], ['Things I enjoy', profile.interests?.join(', ')], ['What brings comfort', profile.comforts?.join(', ')], ['How to connect with me', profile.communication?.join(', ')], ['Other things to know', profile.notes]].filter(([, value]) => value).map(([label, value]) => <div key={label}><h3>{label}</h3><p>{value}</p></div>)}{profile.aiDraft && <><span className="draft-badge">AI DRAFT · REVIEW BEFORE SHARING</span>{knowMeSections.filter(([key]) => profile.aiDraft[key]).map(([key, label]) => <div key={key}><h3>{label}</h3><p>{profile.aiDraft[key]}</p></div>)}</>}</div><button className="button primary full" disabled={exporting} onClick={() => download('know-me')}><Icon name="download" size={17} />{exporting ? 'Creating PDF...' : 'Download Know Me PDF'}</button></Dialog>}
     {modal?.type === 'help' && <Dialog title="Help with your transition plan" onClose={closeModal}><div className="help-topics">{['Start here', 'Care team', 'Coverage', 'What to bring'].map((topic) => <button className={helpTopic === topic ? 'selected' : ''} key={topic} onClick={() => setHelpTopic(topic)}>{topic}</button>)}</div><div className="help-response" aria-live="polite"><span className="soft-icon"><Icon name="chat" size={21} /></span>{helpTopic === 'Start here' && <><h3>Where to start</h3><p>Record what you know about {name} in the intake. You can leave answers blank and update them after speaking with the care team.</p></>}{helpTopic === 'Care team' && <><h3>Questions for the care team</h3><ul>{(intake.currentSetting === 'Hospital' ? careQuestions.hospital : careQuestions.general).map((q) => <li key={q}>{q}</li>)}</ul></>}{helpTopic === 'Coverage' && <><h3>What to ask about coverage</h3><p>Ask the insurer or benefits contact and facility what applies to this person’s situation, what needs approval, and what costs to expect.</p><p>This prototype doesn’t check benefits or determine eligibility.</p><a className="text-link" href="https://www.medicare.gov/" target="_blank" rel="noreferrer">Visit Medicare.gov <Icon name="external" size={14} /></a></>}{helpTopic === 'What to bring' && <><h3>What to pack</h3><p>Ask the facility for its packing list and what it provides. Your plan has a sample checklist for clothing, personal aids, documents, and familiar comforts.</p><button className="button secondary" onClick={() => { setPlanTab('Documents & packing'); setPage('plan'); setModal(null) }}>Open packing checklist <Icon name="arrow" size={16} /></button></>}</div><p className="field-hint">Your family and care team review the plan and make decisions.</p></Dialog>}
     <div className="toast-region" role="status" aria-live="polite">{notice && <div className="toast"><Icon name="check" size={18} />{notice}</div>}</div>

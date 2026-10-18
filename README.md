@@ -28,11 +28,13 @@ Eight main screens connect the journey:
 5. Know Me: optional routines, interests, comforts, and notes that help staff get to know the person. It is the last intake step, and also appears in **My preferences**. The AI draft of the profile is made later from the Downloads tab, because it needs the saved plan.
 6. Starting point: editable answers, care-setting discussion prompts, care-team questions.
 7. Nursing home exploration: CMS records when available, fictional fallback facilities, filters, sorting, saved shortlist, and detail/inspection/call-question panels. **Compare saved** opens a dialog with horizontally scrollable home columns and a branded PDF download. Both show CMS ratings as filled stars out of five and match scores as proportionate bars out of 100, retaining exact values and accessible labels on screen. Raw counts, distances, and hours remain numeric. PDFs group up to three homes per landscape page and include every saved home, with missing values and fictional records labeled. Component score bars appear only in facility details, not result cards.
-8. Transition Plan: personalized checklist, task assignments, documents/packing, family members, a Downloads tab with the whole move-in packet, and branded PDF downloads.
+8. Transition Plan: personalized checklist, task assignments, documents/packing, family members with contact details (name, relationship, phone, email) and optional invitations, a Downloads tab with the whole move-in packet, and branded PDF downloads.
 
 Large choice controls minimize typing. Keyboard focus, labeled radio groups, dialog focus management, reduced-motion support, and responsive layouts are included. Preferences inform the draft plan; no care level or coverage eligibility is determined. Fictional sample facilities have no match score or best-home ranking; real CMS homes get a 0–100 match score computed from the priority sliders, the person’s needs and the travel range. A chosen facility is a planning reference only, with no booking or admission.
 
 ## What is saved
+
+**Contact details and family accounts (demo).** Account sign-up asks for an optional phone number. On the Family tab, **Add family member** takes a name, relationship, phone and email, and a checkbox for whether the person goes on the nursing-home sheet. People with no phone or email are never listed there. **Also invite them to Carebridge** (or **Invite** on a listed person) makes a link and an 8-character code. The invited person opens the link, or chooses **Join a family plan** on the home screen, and registers with their own name, email, phone and relationship. Their account is then linked to the plan and both accounts read and write the same plan. A person who has an account keeps their phone and relationship on that account, and edits made on the Family tab are saved there. Everyone else’s details are stored with the plan. Everything is simulated in the browser: invites live in the `carebridge-demo-accounts-v1` registry next to the accounts, so **an invite only works on the device and browser that created it**, and two tabs editing at once can overwrite each other. Sharing across devices would need the backend to store accounts, invitations and plan data, which it does not do yet. The link carries only the random code, and contact details are never sent to the API or the AI.
 
 Each demo account saves intake answers, current screen, onboarding progress, shortlist, checked tasks, family assignments, and Know Me content in browser localStorage under a separate `carebridge-demo-plan:` key. The `carebridge-demo-accounts-v1` registry stores demo emails and the active session. The previous unlinked draft remains under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
 
@@ -60,11 +62,14 @@ src/
   components/Welcome.jsx     Landing screen and original SVG illustration
   components/Welcome.css     Landing screen styles
   components/Icon.jsx        Shared SVG icon set
+  components/FamilyUI.jsx    Family list, add/edit member form, invite and join screens
   data/prototype.js          Clearly fictional demo fixtures and copy
   lib/demo-model.js          Personalization adapter, filters, local persistence
   lib/demo-model.test.js     Data and storage regression tests
   lib/plan-document.js       Branded PDF layouts and recorded report content
   lib/plan-document.test.js  PDF content, privacy boundaries, and filename tests
+  lib/family.js              Contact details, family list, invite codes and links
+  lib/family.test.js         Contact, invite code and handoff-list tests
   lib/packet-meta.js         The list of packet files and when each is available
   lib/packet-documents.js    Handoff, checklist and questions PDFs, and the packet file list
   lib/packet-documents.test.js  Packet content, privacy, ordering and filename tests

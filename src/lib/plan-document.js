@@ -1,5 +1,6 @@
 import { bridgeMarkSvg } from './brand.js'
 import { packingGroups } from '../data/packing.js'
+import { statusLabels } from './family.js'
 import { importanceLabel, normalizePriorityWeights, priorityTopics } from './priorities.js'
 
 export const ink = '#174d43'
@@ -150,7 +151,15 @@ export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new
         ]), [48, '*']),
       ]),
       heading('Family contacts'),
-      data.family?.length ? paragraph(data.family.map(clean).join(', ')) : paragraph('No family contacts recorded.'),
+      ...(Array.isArray(data.familyContacts) && data.familyContacts.some((person) => person.role !== 'group')
+        ? [records(['Name', 'Role', 'Phone', 'Email', 'Carebridge'], data.familyContacts.filter((person) => person.role !== 'group').map((person) => [
+          { text: clean(person.displayName || person.name), bold: true },
+          { text: [person.role === 'main' ? 'Main contact' : 'Family member', clean(person.relationship)].filter(Boolean).join(', '), fontSize: 9.5 },
+          { text: clean(person.phone) || 'Not recorded', fontSize: 9.5 },
+          { text: clean(person.email) || 'Not recorded', fontSize: 9.5 },
+          { text: statusLabels[person.status] || '', fontSize: 9 },
+        ]), [70, 90, 85, '*', 70]), { text: 'Contact details were entered by the family. People marked private are left off the sheet for the nursing home.', style: 'note', margin: [0, 0, 0, 10] }]
+        : [data.family?.length ? paragraph(data.family.map(clean).join(', ')) : paragraph('No family contacts recorded.')]),
     )
 
     if (facilities.length) {
