@@ -77,3 +77,20 @@ test('unavailable, malformed, and structurally invalid storage fails safely', ()
   assert.equal(saveDraft({ page: 'plan' }), false)
   delete globalThis.window
 })
+
+test('onboarding completion survives refresh and migrates existing workspaces', () => {
+  let stored
+  globalThis.window = { localStorage: { getItem: () => stored, setItem: (_key, value) => { stored = value } } }
+  try {
+    for (const page of ['overview', 'facilities', 'plan']) {
+      stored = JSON.stringify({ page })
+      assert.equal(loadDraft().onboardingComplete, true)
+    }
+    stored = JSON.stringify({ page: 'support' })
+    assert.equal(loadDraft().onboardingComplete, false)
+    assert.equal(saveDraft({ page: 'priorities', onboardingComplete: false }), true)
+    assert.equal(loadDraft().onboardingComplete, false)
+    assert.equal(saveDraft({ page: 'welcome', onboardingComplete: true }), true)
+    assert.equal(loadDraft().onboardingComplete, true)
+  } finally { delete globalThis.window }
+})

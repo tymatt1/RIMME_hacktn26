@@ -1,5 +1,7 @@
 export default function Icon({ name = 'arrow', size = 20 }) {
   const paths = {
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+    settings: <><path d="m10 2-.6 2.4-2 .9L5.2 4 2.4 8.8l1.8 1.7v2.9l-1.8 1.8L5.2 20l2.2-1.3 2 .9.6 2.4h4l.6-2.4 2-.9 2.2 1.3 2.8-4.8-1.8-1.8v-2.9l1.8-1.7L18.8 4l-2.2 1.3-2-.9L14 2Z" /><circle cx="12" cy="12" r="3" /></>,
     arrow: <path d="M4 12h15M13 5l7 7-7 7" />,
     back: <path d="M20 12H5m6-7-7 7 7 7" />,
     check: <path d="m5 12 4 4L19 6" />,

@@ -112,6 +112,7 @@ function hydrateDraft(draft) {
   const assignees = draft.assignees && typeof draft.assignees === 'object' && !Array.isArray(draft.assignees) ? draft.assignees : {}
   return {
     page: pages.has(draft.page) ? draft.page : 'welcome',
+    onboardingComplete: typeof draft.onboardingComplete === 'boolean' ? draft.onboardingComplete : ['overview', 'facilities', 'plan'].includes(draft.page),
     intake: hydrateIntake(draft.intake),
     completed: stringList(draft.completed),
     shortlist: stringList(draft.shortlist),

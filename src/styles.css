@@ -1048,3 +1048,37 @@ select { cursor: pointer; }
 .task-category { display: inline-block; margin-left: 8px; font-size: 9px; letter-spacing: .5px; color: var(--muted); text-transform: uppercase; }
 .know-me-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 @media (max-width: 640px) { .rating-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .citation-table th, .citation-table td { padding: 8px 4px; } }
+/* Onboarding and preferences share the same questions. */
+.workspace-header { display: flex; justify-content: flex-end; align-items: center; min-height: 82px; padding: 16px 32px 0; gap: 20px; }
+.account-controls { display: flex; align-items: center; gap: 12px; }
+.profile-placeholder { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; padding: 0; border: 1px solid #d5ddcd; border-radius: 50%; background: #e8ecdf; color: #7b8c73; flex-shrink: 0; }
+.settings-button { width: 46px; height: 46px; background: transparent; border: 1px solid var(--line); border-radius: 50%; }
+.settings-button:hover, button.profile-placeholder:hover { background: #dfe7d3; }
+.onboarding-shell .workspace { margin-left: 0; }
+.onboarding-shell .workspace-header { max-width: 1020px; margin: auto; justify-content: space-between; padding: 22px 32px; border-bottom: 1px solid var(--line); }
+.onboarding-label { color: var(--text); font-size: 14px; }
+.onboarding-shell .page-content { max-width: 940px; margin: auto; }
+.onboarding-shell .page-heading { margin-top: 0; }
+.onboarding-shell .floating-help { display: none; }
+.preferences-dialog.dialog-wide { width: min(920px, 100%); }
+.preferences-section-label { display: inline-flex; align-items: center; gap: 8px; padding: 10px 15px; border-bottom: 2px solid var(--ink); background: #eef1e5; margin: 8px 0 24px; font-size: 15px; }
+.preferences-step-heading { font-size: 27px; font-family: Georgia, serif; margin: 24px 0; }
+.preferences-dialog .form-panel { padding: 0; border: 0; box-shadow: none; background: transparent; }
+.preferences-dialog .intake-layout { display: block; }
+.preferences-dialog .intake-progress { margin-bottom: 24px; }
+.preferences-dialog .form-actions { position: sticky; bottom: -32px; background: var(--surface); padding: 20px 0; z-index: 2; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.preference-actions .button.secondary { margin-left: auto; }
+.confirmation-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+.account-profile-summary { display: grid; justify-items: center; gap: 12px; padding: 12px 0 28px; }
+.account-profile-summary .profile-placeholder { width: 72px; height: 72px; }
+@media (max-width: 650px) {
+  .workspace-header { min-height: 68px; padding: 12px 20px 0; }
+  .onboarding-shell .workspace-header { padding: 16px; gap: 12px; }
+  .onboarding-shell .brand { font-size: 22px; padding: 0; }
+  .onboarding-label { font-size: 11px; max-width: 110px; text-align: right; }
+  .preferences-dialog .intake-progress { gap: 5px; }
+  .preferences-dialog .intake-progress button { font-size: 11px; }
+  .preferences-dialog .form-actions { bottom: -22px; }
+  .preference-actions .button { flex: 1; padding-left: 12px; padding-right: 12px; }
+  .confirmation-actions { flex-direction: column; }
+}
