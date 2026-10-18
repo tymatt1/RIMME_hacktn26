@@ -283,11 +283,19 @@ export const scoreTone = (match) => (match === null || match === undefined ? 'no
 
 // Percent each part counts for this family (what the results banner shows). Distance only counts when we know where they are looking.
 export function weightShares(weights, { distance = true } = {}) {
-  const parts = scoreComponents.filter(([key]) => distance || key !== 'distance')
-  const used = parts.some(([key]) => weights[key] > 0) ? weights : equalWeights
-  const total = parts.reduce((sum, [key]) => sum + used[key], 0)
-  const shares = parts.map(([key, label]) => ({ key, label, pct: Math.round((used[key] / total) * 100) }))
-  const drift = 100 - shares.reduce((sum, s) => sum + s.pct, 0)
+  // One share per priority slider, so equal sliders show equal shares. The Inspection information slider drives two parts.
+  const groups = [
+    ['staffing', 'Nurse staffing', ['staffing']],
+    ['inspections', 'Inspections & safety', ['inspections', 'safety']],
+    ['quality', 'Quality measures', ['quality']],
+    ['distance', 'Distance', ['distance']],
+  ].filter(([key]) => distance || key !== 'distance')
+  const keys = groups.flatMap(([, , parts]) => parts)
+  const used = keys.some((key) => weights[key] > 0) ? weights : equalWeights
+  const sum = (parts) => parts.reduce((total, key) => total + used[key], 0)
+  const total = sum(keys)
+  const shares = groups.map(([key, label, parts]) => ({ key, label, pct: Math.round((sum(parts) / total) * 100) }))
+  const drift = 100 - shares.reduce((acc, share) => acc + share.pct, 0)
   shares.sort((a, b) => b.pct - a.pct)
   shares[0].pct += drift
   return shares

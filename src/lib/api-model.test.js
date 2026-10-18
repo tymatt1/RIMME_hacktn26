@@ -173,3 +173,13 @@ test('weight shares add up to 100 and drop distance when the place is unknown', 
   assert.equal(noDistance.some((s) => s.key === 'distance'), false)
   assert.equal(noDistance.reduce((sum, s) => sum + s.pct, 0), 100)
 })
+
+test('equal sliders show equal shares, with inspections and safety grouped under their one slider', () => {
+  const equal = { 'Close to family': 50, 'Staffing': 50, 'Inspection information': 50, 'Quality of care': 50, 'Costs & coverage': 50 }
+  const shares = weightShares(scoreWeights(equal))
+  assert.deepEqual(shares.map((share) => share.pct), [25, 25, 25, 25])
+  assert.equal(shares.some((share) => share.key === 'safety'), false)
+  const inspection = weightShares(scoreWeights({ ...equal, 'Inspection information': 100 })).find((share) => share.key === 'inspections')
+  assert.equal(inspection.pct, 40)
+  assert.deepEqual(weightShares(scoreWeights(equal), { distance: false }).map((share) => share.pct), [34, 33, 33])
+})
