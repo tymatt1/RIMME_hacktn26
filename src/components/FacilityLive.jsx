@@ -71,7 +71,6 @@ export function ScoreBreakdown({ f }) {
   return <section className={`score-card match-${scoreTone(f.match)}`} aria-label="Match score breakdown">
     <div className="score-head"><div className="score-number"><strong>{f.match}</strong><span>/ 100</span></div><div><h3>Match score</h3><p>Built from CMS data and your priorities. It is not medical advice or a guarantee of care.</p></div></div>
     <ul className="score-parts">{f.matchParts.map((part) => <li key={part.key}><div className="score-part-top"><strong>{part.label}</strong><span>{part.value}/100 · counts {part.weight}%</span></div><div className="score-bar" role="presentation"><span style={{ width: `${part.value}%` }} /></div><small>{part.note}</small></li>)}</ul>
-    {f.matchReasons?.length > 0 && <ul className="score-reasons">{f.matchReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
     {f.scoreNotes.length > 0 && <p className="field-hint">Flags included: {f.scoreNotes.join('; ')}.</p>}
     <p className="field-hint">Parts CMS has no data for are left out, not counted as zero. {notMatched}</p>
   </section>
