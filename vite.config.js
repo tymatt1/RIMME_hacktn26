@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 // (no CORS, no mixed-content problems). Set API_PROXY_TARGET in .env.local to point elsewhere.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
-  const target = env.API_PROXY_TARGET || 'http://147.224.195.130:8000'
+  const target = env.API_PROXY_TARGET || 'https://147-224-195-130.sslip.io'
   return {
     base: './',
     plugins: [react()],

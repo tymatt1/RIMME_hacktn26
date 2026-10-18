@@ -109,7 +109,7 @@ function hydrateAiDraft(value) {
   return entries.length ? Object.fromEntries(entries) : null
 }
 
-function hydrateDraft(draft) {
+export function hydrateDraft(draft) {
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return null
   const profile = draft.profile && typeof draft.profile === 'object' && !Array.isArray(draft.profile) ? draft.profile : {}
   const members = stringList(draft.members).map((member) => member.trim()).filter(Boolean)

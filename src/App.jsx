@@ -8,11 +8,15 @@ import CostPreference from './components/CostPreference.jsx'
 import Icon from './components/Icon.jsx'
 import { facilities, sampleIntake, buildCareSummary, careQuestions, knowMePrompts } from './data/prototype.js'
 import { buildTasks } from './lib/plan.js'
-import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './lib/demo-model.js'
+import { blankIntake, hydrateDraft, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './lib/demo-model.js'
 import { api } from './lib/api.js'
 import { normalizePriorityWeights } from './lib/priorities.js'
 import { packetListing } from './lib/packet-meta.js'
-import { accountDraftKey, acceptInvite, cancelInvite, createDemoAccount, createInvite, familyLinks, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount, updateAccountContact } from './lib/demo-accounts.js'
+import { accountDraftKey, familyLinks, freshAccountPlan, openPreviousDemoPlan, resumePage } from './lib/demo-accounts.js'
+import { cloud } from './lib/cloud.js'
+import { emptyLinks, rememberPage, startup } from './lib/account-store.js'
+import { same, syncable } from './lib/plan-merge.js'
+import { createPlanSync } from './lib/plan-sync.js'
 import { FamilyList, InviteReady, JoinForm, MemberForm } from './components/FamilyUI.jsx'
 import { inviteCodeFromSearch, inviteLink, inviteMailto, isGroupMember, isValidEmail, isValidPhone, normalizeContact, resolveFamily } from './lib/family.js'
 import { facilityFromApi, guidanceFromResponse, intakeKey, toBackendIntake, toKnowMeBody, categoryLabels, liveFilters, knowMeSections, scoreWeights, matchScore, needsProfile, weightShares, scoreReasons } from './lib/api-model.js'
@@ -48,6 +52,9 @@ const colorVisionModes = [
   ['tritanopia', 'Tritanopia'],
 ]
 const colorVisionStorageKey = 'carebridge-color-vision-v1'
+const syncLabels = { saved: 'Saved to your account', saving: 'Saving…', offline: 'Offline · will save when you’re back online', error: 'Couldn’t save your latest changes' }
+// How often a signed-in device checks for changes other family members saved. (Overridable so tests can use a short one.)
+const syncPollMs = Number(import.meta.env?.VITE_SYNC_POLL_MS) || 15000
 
 function initialColorVisionMode() {
   if (typeof window === 'undefined') return 'standard'
@@ -114,7 +121,7 @@ function Building({ variant = 0 }) {
 function Distance({ value, onChange }) {
   return <div className="distance-control"><div className="distance-value"><span>Up to <strong>{value}</strong> miles</span><div><button className="icon-button" aria-label="Decrease travel distance" disabled={value <= 5} onClick={() => onChange(Math.max(5, value - 5))}><Icon name="minus" size={16} /></button><button className="icon-button" aria-label="Increase travel distance" disabled={value >= 50} onClick={() => onChange(Math.min(50, value + 5))}><Icon name="plus" size={16} /></button></div></div><input aria-label="Maximum travel distance in miles" type="range" min="5" max="50" step="5" value={value} onChange={(e) => onChange(Number(e.target.value))} /><div className="range-labels"><span>5 miles</span><span>50 miles</span></div></div>
 }
-function IntakeWorkflow({ page, intake, patch, actions, editing = false, profile = {}, patchProfile = () => {} }) {
+function IntakeWorkflow({ page, intake, patch, actions, editing = false, synced = false, profile = {}, patchProfile = () => {} }) {
   return <div className="intake-layout"><section className="panel form-panel">
             {page === 'situation' && <>
               <Field title="Who are you planning for?"><Choices name="relationship" options={['Myself', 'Parent', 'Grandparent', 'Spouse or partner', 'Someone else']} value={intake.relationship} onChange={(v) => patch({ relationship: v })} compact /></Field>
@@ -156,12 +163,12 @@ function IntakeWorkflow({ page, intake, patch, actions, editing = false, profile
                 : <label className="text-field" key={prompt.id}>{prompt.label}<span className="optional">Optional</span><textarea rows={3} value={profile.notes || ''} onChange={(e) => patchProfile({ notes: e.target.value })} placeholder="For example, how they like to start the day or what helps when they’re upset." /></label>)}
               {actions('priorities', 'overview', 'See your starting point')}
             </>}
-          </section><div className="intake-storage-note"><Icon name="shield" size={18} /><p>{editing ? 'Changes update your plan only when you save.' : 'Answers stay in this browser.'}</p></div></div>
+          </section><div className="intake-storage-note"><Icon name="shield" size={18} /><p>{editing ? 'Changes update your plan only when you save.' : synced ? 'Answers are saved to your account, encrypted, and shared with the family on this plan.' : 'Answers stay in this browser.'}</p></div></div>
 }
 function IntakeProgress({ step, onChange }) {
   return <div className="intake-progress" aria-label={`Step ${step + 1} of ${intakeSteps.length}`}>{intakeSteps.map(([id, label], i) => <button key={id} className={i <= step ? 'reached' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => onChange(i)}><span>{i < step ? <Icon name="check" size={13} /> : i + 1}</span>{label}</button>)}</div>
 }
-function ProfileMenu({ caregiverName, personName, onPreferences, onSignOut }) {
+function ProfileMenu({ caregiverName, personName, onPreferences, onSignOut, onDelete }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const triggerRef = useRef(null)
@@ -180,12 +187,42 @@ function ProfileMenu({ caregiverName, personName, onPreferences, onSignOut }) {
     {open && <section id="profile-dropdown" className="profile-dropdown" aria-label="Your profile">
       <div className="profile-dropdown-summary"><span className="profile-placeholder"><Icon name="user" size={26} /></span><div><h2>{caregiverName || 'Your family'}</h2><p>Planning care for {personName}.</p></div></div>
       <button className="profile-dropdown-action" onClick={() => { setOpen(false); onPreferences() }}><Icon name="settings" size={18} />My preferences</button>
+      {onDelete && <button className="profile-dropdown-action" onClick={() => { setOpen(false); onDelete() }}><Icon name="close" size={18} />Delete my account</button>}
       <button className="profile-dropdown-action sign-out-action" onClick={() => { setOpen(false); onSignOut() }}><Icon name="signout" size={18} />Sign out</button>
     </section>}
   </div>
 }
+// Shown while the app finds out whether accounts live on the Carebridge server, and if someone is already signed in.
+function BootScreen({ error, onRetry }) {
+  return <main className="boot-screen" role={error ? 'alert' : 'status'} aria-live="polite">
+    <CarebridgeLogo />
+    {error ? <>
+      <h1>We couldn’t open your plan</h1>
+      <p>{error.message || 'Something went wrong.'} Your saved plan is safe. Nothing was changed.</p>
+      <button className="button primary" onClick={onRetry}>Try again<Icon name="arrow" size={17} /></button>
+    </> : <p>Opening your workspace…</p>}
+  </main>
+}
+
 export default function App() {
-  const [initialSession] = useState(loadDemoSession)
+  const [boot, setBoot] = useState(null)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    startup().then((result) => { if (!cancelled) setBoot(result) })
+    return () => { cancelled = true }
+  }, [attempt])
+  if (!boot) return <BootScreen />
+  if (boot.error) return <BootScreen error={boot.error} onRetry={() => { setBoot(null); setAttempt((count) => count + 1) }} />
+  return <Planner boot={boot} />
+}
+
+// `boot.store` is where accounts live: on the Carebridge server ("cloud", the same plan on every device) or, when the
+// account service isn't reachable, in this browser only (the original demo). `boot.session` is what to start with.
+function Planner({ boot }) {
+  const { store } = boot
+  const cloudMode = store.mode === 'cloud'
+  const [initialSession] = useState(boot.session)
   const stored = initialSession.draft
   const [accountId, setAccountId] = useState(initialSession.accountId)
   const [planId, setPlanId] = useState(initialSession.planId || null)
@@ -200,7 +237,7 @@ export default function App() {
   const [profile, setProfile] = useState(stored?.profile || { morning: '', interests: [], comforts: [], communication: [], notes: '', aiDraft: null })
   const [members, setMembers] = useState(stored?.members || ['Me', 'Family'])
   const [contacts, setContacts] = useState(stored?.contacts || {})
-  const [links, setLinks] = useState(() => familyLinks(initialSession.planId, initialSession.accountId))
+  const [links, setLinks] = useState(() => (cloudMode ? emptyLinks(initialSession.role === 'owner') : familyLinks(initialSession.planId, initialSession.accountId)))
   const [assignees, setAssignees] = useState(stored?.assignees || {})
   const [chosenFacility, setChosenFacility] = useState(stored?.chosenFacility || '')
   const [joinCode] = useState(() => { try { return inviteCodeFromSearch(window.location.search) } catch { return '' } })
@@ -229,9 +266,15 @@ export default function App() {
   const [askState, setAskState] = useState({ ccn: '', question: '', status: 'idle', answer: null })
   const [knowMeState, setKnowMeState] = useState('idle')
   const [colorVisionMode, setColorVisionMode] = useState(initialColorVisionMode)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [syncStatus, setSyncStatus] = useState('saved')
   const mainRef = useRef(null)
   const firstRender = useRef(true)
   const accountEpoch = useRef(0)
+  const syncRef = useRef(null)
+  const syncSeed = useRef(initialSession.sync || null)
+  const liveRef = useRef(null)
   const patch = (values) => setIntake((current) => ({ ...current, ...values, ...('currentSetting' in values && values.currentSetting !== 'Hospital' ? { dischargeDate: '', hospitalStatus: 'Not sure' } : {}) }))
   const name = intake.personName.trim() || 'your loved one'
   const backendBody = toBackendIntake(intake)
@@ -258,6 +301,11 @@ export default function App() {
   const inviteStatus = Object.fromEntries(Object.entries(links.byMember).map(([member, link]) => [member, link.status]))
   const family = resolveFamily({ members, contacts, linked: linkedAccounts, status: inviteStatus, intake })
   const youName = links.isOwner ? members[0] : links.you
+  const signedInCloud = cloudMode && Boolean(accountId)
+  // The part of the plan that is shared between devices, as it is on screen right now.
+  liveRef.current = { onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance }
+  const canInvite = Boolean(planId) && (!cloudMode || links.isOwner)
+  const editingPerson = modal?.type === 'member-edit' ? family.find((person) => person.name === modal.name) : null
   const packet = packetListing({ facilities: savedHomes })
   // Apply new priority sliders from the results tab: remember today's order, reload the homes, then re-rank.
   const applyPriorities = (next) => {
@@ -272,16 +320,58 @@ export default function App() {
   const closeModal = () => setModal(null)
   useEffect(() => {
     if (!accountId && !legacyActive) return
+    // Signed in to the server: the plan is saved there (see the sync effect). Only the screen this device is on is remembered here.
+    if (signedInCloud) { rememberPage(planId, page === 'welcome' ? returnPage : page); return }
     setStorageSaved(saveDraft({ page, returnPage: page === 'welcome' ? returnPage : page, onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance }, accountId ? accountDraftKey(planId || accountId) : undefined))
-  }, [accountId, planId, legacyActive, page, returnPage, onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance])
-  // Invites and linked accounts are kept apart from the plan, so another tab or account can change them. Re-read them when this tab regains focus.
+  }, [accountId, planId, legacyActive, signedInCloud, page, returnPage, onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance])
+  // Whenever the shared plan changes on this device, ask the sync engine to save it.
+  useEffect(() => { syncRef.current?.schedulePush() }, [onboardingComplete, intake, shortlist, completed, profile, members, contacts, assignees, chosenFacility, guidance])
+  // Signed in to the server: keep this device and the server in step. Saves a moment after each change and picks up what other
+  // family members changed. Changes made on two devices at once are merged, not overwritten.
   useEffect(() => {
-    const refresh = () => setLinks(familyLinks(planId, accountId))
+    if (!signedInCloud || !syncSeed.current) return undefined
+    const engine = createPlanSync({
+      client: cloud,
+      getLocal: () => liveRef.current,
+      applyRemote: applyRemotePlan,
+      normalize: (plan) => syncable(hydrateDraft(plan) || {}),
+      onStatus: setSyncStatus,
+      onSessionEnded: () => { applySession(null); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('You were signed out. Sign in again to keep editing.') },
+      pollMs: syncPollMs,
+      isActive: () => document.visibilityState !== 'hidden',
+    })
+    syncRef.current = engine
+    setSyncStatus('saved')
+    engine.start(syncSeed.current)
+    const wake = () => { if (document.visibilityState !== 'hidden') engine.poll() }
+    const leave = () => { if (document.visibilityState === 'hidden') engine.flush() }
+    window.addEventListener('focus', wake); window.addEventListener('online', wake)
+    document.addEventListener('visibilitychange', wake); document.addEventListener('visibilitychange', leave)
+    return () => {
+      engine.stop()
+      if (syncRef.current === engine) syncRef.current = null
+      window.removeEventListener('focus', wake); window.removeEventListener('online', wake)
+      document.removeEventListener('visibilitychange', wake); document.removeEventListener('visibilitychange', leave)
+    }
+  }, [signedInCloud, planId, accountId])
+  // Invites and linked accounts are kept apart from the plan, so another tab, device or account can change them. Re-read them when
+  // this tab regains focus, and every so often while signed in to the server.
+  useEffect(() => {
+    if (cloudMode && !accountId) { setLinks(emptyLinks()); return undefined }
+    let cancelled = false
+    const refresh = async () => {
+      if (cloudMode && document.visibilityState === 'hidden') return
+      try {
+        const next = await store.links(planId, accountId)
+        if (!cancelled) setLinks((current) => (same(current, next) ? current : next))
+      } catch { /* Keep what is shown. The next refresh tries again. */ }
+    }
     refresh()
     window.addEventListener('storage', refresh); window.addEventListener('focus', refresh)
-    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh) }
-  }, [planId, accountId, planTab])
-  useEffect(() => { setAuthError('') }, [modal?.type])
+    const timer = cloudMode ? window.setInterval(refresh, 20000) : null
+    return () => { cancelled = true; window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh); if (timer) window.clearInterval(timer) }
+  }, [store, planId, accountId, planTab])
+  useEffect(() => { setAuthError(''); setDeleteError('') }, [modal?.type])
   useEffect(() => {
     document.title = page === 'welcome' ? 'carebridge | Nursing home transition planning' : `${headings[page][1]} | carebridge`
     if (!firstRender.current) { window.scrollTo({ top: 0, behavior: 'instant' }); mainRef.current?.focus({ preventScroll: true }) }
@@ -345,16 +435,39 @@ export default function App() {
     setCatalogState({ source: 'loading', list: [], center: null, resolved: true }); setFacilityDetails({}); setSort('score'); setProgram('All sample options')
     setPlanTab('Checklist'); setDetailTab('Overview'); setPreferenceDraft(null); setPreferenceStep(0); setConfirmPreferences(false); setModal(null)
   }
-  function applySession(session) {
-    setAccountId(session?.accountId || null); setPlanId(session?.planId || null); setAccountName(session?.accountName || ''); setLegacyActive(false)
-    setLinks(familyLinks(session?.planId || null, session?.accountId || null))
+  // Folds a plan merged from the server into what is on screen. Only what really changed is touched, so nothing flickers.
+  function applyRemotePlan(merged) {
+    const next = hydrateDraft(merged)
+    if (!next) return
+    const keep = (value) => (current) => (same(current, value) ? current : value)
+    setIntake(keep(next.intake)); setShortlist(keep(next.shortlist)); setCompleted(keep(next.completed)); setProfile(keep(next.profile))
+    setMembers(keep(next.members)); setContacts(keep(next.contacts)); setAssignees(keep(next.assignees)); setGuidance(keep(next.guidance))
+    setChosenFacility(next.chosenFacility); setOnboardingComplete(next.onboardingComplete)
   }
-  function signOut() {
-    try { signOutDemoAccount() } catch { setNotice('Your browser could not save the sign-out. Please enable browser storage and try again.'); return }
+  function applySession(session) {
+    syncSeed.current = session?.sync || null
+    setAccountId(session?.accountId || null); setPlanId(session?.planId || null); setAccountName(session?.accountName || ''); setLegacyActive(false)
+    setLinks(cloudMode ? emptyLinks(session?.role === 'owner') : familyLinks(session?.planId || null, session?.accountId || null))
+  }
+  async function signOut() {
+    try {
+      await syncRef.current?.flush() // saves the last edits first
+      await store.signOut()
+    } catch { setNotice(cloudMode ? 'We couldn’t sign you out. Check your connection and try again.' : 'Your browser could not save the sign-out. Please enable browser storage and try again.'); return }
     applySession(null); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('Signed out.')
   }
-  function sample() {
-    try { signOutDemoAccount() } catch { /* Viewing an example does not require storage. */ }
+  async function deleteAccount(event) {
+    event.preventDefault()
+    const password = String(new FormData(event.currentTarget).get('password') || '')
+    setAuthBusy(true); setDeleteError('')
+    try {
+      await store.deleteAccount(password)
+      applySession(null); restorePlan(freshAccountPlan('')); setPage('welcome'); setNotice('Your account was deleted.')
+    } catch (error) { setDeleteError(error.message || 'We couldn’t delete the account. Please try again.') } finally { setAuthBusy(false) }
+  }
+  async function sample() {
+    try { await syncRef.current?.flush() } catch { /* Nothing to save is fine. */ }
+    if (!cloudMode || accountId) store.signOut().catch(() => { /* Viewing an example does not require signing out cleanly. */ })
     applySession(null); restorePlan(freshAccountPlan('Maria'))
     setIntake({ ...blankIntake(), ...sampleIntake, coverage: ['Medicare', 'Not sure about other coverage'] })
     setShortlist([]); setCompleted([]); setChosenFacility(''); setAssignees({}); setMembers(['Maria', 'Daniel', 'Family'])
@@ -418,12 +531,13 @@ export default function App() {
   async function copyText(text, message) {
     try { await window.navigator.clipboard.writeText(text); setNotice(message) } catch { setNotice('Copying isn’t available here. Select the text and copy it.') }
   }
-  function startInvite(person) {
-    try { createInvite(planId, { memberName: person.name, relationship: person.relationship, email: person.email }) } catch (error) { setNotice(error.message); return }
-    setLinks(familyLinks(planId, accountId)); setModal({ type: 'invite', name: person.name })
+  async function refreshLinks() { setLinks(await store.links(planId, accountId)) }
+  async function startInvite(person) {
+    try { await store.invite(planId, { memberName: person.name, relationship: person.relationship, email: person.email }); await refreshLinks() } catch (error) { setNotice(error.message); return }
+    setModal({ type: 'invite', name: person.name })
   }
   // Adds a person or updates their details. Returns a message to show in the form when something is wrong.
-  function saveMember(values, existing) {
+  async function saveMember(values, existing) {
     const person = existing ? existing.name : values.name
     if (!existing) {
       if (!person) return 'Enter a first name or nickname.'
@@ -432,38 +546,46 @@ export default function App() {
     if (values.phone && !isValidPhone(values.phone)) return 'Enter a phone number with at least 7 digits, or leave it blank.'
     if (values.email && !isValidEmail(values.email)) return 'Enter an email address like daniel@example.com.'
     const contact = normalizeContact({ relationship: values.relationship, phone: values.phone, email: existing?.hasAccount ? existing.email : values.email, shareWithHome: values.shareWithHome })
+    // Someone with an account keeps their own phone and relationship there. On the server, only they can change them.
+    const ownDetails = existing?.hasAccount && (!cloudMode || existing.name === youName)
     try {
-      if (existing?.hasAccount) updateAccountContact(existing.email, { phone: contact.phone, relationship: contact.relationship })
-      if (values.invite) createInvite(planId, { memberName: person, relationship: contact.relationship, email: contact.email })
+      if (ownDetails) await store.updateContact(existing.email, { phone: contact.phone, relationship: contact.relationship })
+      if (values.invite) await store.invite(planId, { memberName: person, relationship: contact.relationship, email: contact.email })
+      await refreshLinks()
     } catch (error) { return error.message }
-    if (!existing) setMembers([...members, person])
-    setContacts({ ...contacts, [person]: contact })
-    setLinks(familyLinks(planId, accountId))
+    if (!existing) setMembers((current) => (current.includes(person) ? current : [...current, person]))
+    setContacts((current) => ({ ...current, [person]: contact }))
     if (values.invite) setModal({ type: 'invite', name: person })
     else { setModal(null); setNotice(existing ? 'Contact details saved.' : `${person} was added to the family list.`) }
     return undefined
   }
-  function removeInvite(code) {
-    try { cancelInvite(planId, code) } catch (error) { setNotice(error.message); return }
-    setLinks(familyLinks(planId, accountId)); setModal(null); setNotice('Invite canceled.')
+  async function removeInvite(code) {
+    try { await store.cancelInvite(planId, code); await refreshLinks() } catch (error) { setNotice(error.message); return }
+    setModal(null); setNotice('Invite canceled.')
   }
-  function joinPlan(values) {
+  async function joinPlan(values) {
     try {
-      const session = acceptInvite(values.code, values)
+      const session = await store.join(values)
       applySession(session); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); clearJoinParam()
       setNotice('You joined the family plan. Your contact details were added.')
       return undefined
     } catch (error) { return error.message || 'We couldn’t join this plan. Please try again.' }
   }
-  function auth(e) {
-    e.preventDefault(); const data = new FormData(e.currentTarget)
+  async function auth(event) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const kind = modal.type
+    const field = (key) => String(data.get(key) || '')
+    setAuthBusy(true); setAuthError('')
     try {
-      const session = modal.type === 'account' ? createDemoAccount(data.get('email'), String(data.get('name') || ''), String(data.get('phone') || '')) : signInDemoAccount(data.get('email'))
-      applySession(session); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); setNotice(modal.type === 'account' ? 'Your new plan is ready. Let’s get started.' : 'Your saved plan is open.')
-    } catch (error) { setAuthError(error.message || 'We couldn’t open this demo plan. Please try again.') }
+      const session = kind === 'account'
+        ? await store.signUp({ email: field('email'), name: field('name'), phone: field('phone'), password: field('password') })
+        : await store.signIn({ email: field('email'), password: field('password') })
+      applySession(session); restorePlan(session.draft); setPage(resumePage(session.draft)); setAuthError(''); setNotice(kind === 'account' ? 'Your new plan is ready. Let’s get started.' : 'Your saved plan is open.')
+    } catch (error) { setAuthError(error.message || 'We couldn’t open this plan. Please try again.') } finally { setAuthBusy(false) }
   }
   function actions(previous, next, label = 'Continue') {
-    return <div className="form-actions"><button className="text-button" onClick={() => setPage(previous)}><Icon name="back" size={17} />Back</button><span className="save-hint"><Icon name="shield" size={15} />{storageSaved ? 'Saved on this device' : 'Browser storage unavailable · download your plan'}</span><button className="button primary" onClick={() => { if (next === 'overview') setOnboardingComplete(true); setPage(next) }}>{label}<Icon name="arrow" size={18} /></button></div>
+    return <div className="form-actions"><button className="text-button" onClick={() => setPage(previous)}><Icon name="back" size={17} />Back</button><span className="save-hint"><Icon name="shield" size={15} />{signedInCloud ? syncLabels[syncStatus] : storageSaved ? 'Saved on this device' : 'Browser storage unavailable · download your plan'}</span><button className="button primary" onClick={() => { if (next === 'overview') setOnboardingComplete(true); setPage(next) }}>{label}<Icon name="arrow" size={18} /></button></div>
   }
   function openPreferences(startStep = 0) {
     setPreferenceDraft(window.structuredClone(intake)); setProfileDraft(window.structuredClone(profile)); setPreferenceStep(Number.isInteger(startStep) ? startStep : 0); setConfirmPreferences(false); setModal({ type: 'preferences' })
@@ -484,16 +606,18 @@ export default function App() {
   function details(id) { setDetailTab('Overview'); setModal({ type: 'facility', id }) }
   function help(topic = 'Start here') { setHelpTopic(topic); setModal({ type: 'help' }) }
   function goHome() { setReturnPage(page); setPage('welcome') }
+  const profileMenu = <ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} onDelete={signedInCloud ? () => setModal({ type: 'delete' }) : undefined} />
+  const syncPill = signedInCloud && syncStatus !== 'saved' ? <span className={`sync-pill ${syncStatus}`} role="status">{syncLabels[syncStatus]}</span> : null
   return <>
-    {page === 'welcome' ? <Welcome onStart={() => setModal({ type: 'account' })} onSignIn={() => setModal({ type: 'signin' })} onJoin={() => setModal({ type: 'join' })} accountControls={(accountId || legacyActive) && <ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} />} onResume={(accountId || legacyActive) ? () => setPage(returnPage) : undefined} resumeLabel={onboardingComplete ? 'Open my plan' : 'Continue setup'} /> : <div className={`app-shell ${step >= 0 ? 'onboarding-shell' : ''}`} inert={modal ? true : undefined}>
+    {page === 'welcome' ? <Welcome onStart={() => setModal({ type: 'account' })} onSignIn={() => setModal({ type: 'signin' })} onJoin={() => setModal({ type: 'join' })} accountControls={(accountId || legacyActive) && profileMenu} onResume={(accountId || legacyActive) ? () => setPage(returnPage) : undefined} resumeLabel={onboardingComplete ? 'Open my plan' : 'Continue setup'} /> : <div className={`app-shell ${step >= 0 ? 'onboarding-shell' : ''}`} inert={modal ? true : undefined}>
       <a className="skip-link" href="#main">Skip to content</a>
       {step < 0 && <aside className="sidebar"><CarebridgeLogo onClick={goHome} /><nav className="primary-navigation" aria-label="Your plan navigation">{nav.map(([id, label]) => <button className={`primary-nav-link section-${id} ${page === id ? 'active' : ''}`} key={id} aria-label={label} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}><span className="primary-nav-label">{label}</span></button>)}</nav></aside>}
       <div className="workspace">
-        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of {intakeSteps.length}</span><ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /></div></> : <div className="account-controls"><ProfileMenu caregiverName={accountName || intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
+        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of {intakeSteps.length}</span>{profileMenu}</div></> : <div className="account-controls">{syncPill}{profileMenu}<button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
         <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : 'Download full plan'}</button>}</div>
           {step >= 0 && <IntakeProgress step={step} onChange={(i) => setPage(intakeSteps[i][0])} />}
 
-          {step >= 0 && <IntakeWorkflow page={page} intake={intake} patch={patch} profile={profile} patchProfile={(values) => setProfile((current) => ({ ...current, ...values }))} actions={actions} />}
+          {step >= 0 && <IntakeWorkflow page={page} intake={intake} patch={patch} synced={signedInCloud} profile={profile} patchProfile={(values) => setProfile((current) => ({ ...current, ...values }))} actions={actions} />}
 
           {page === 'overview' && <>
             <div className="overview-grid"><section className="journey-card"><div><h2>Compare homes for {name}</h2><p>Use the needs and priorities you’ve recorded to prepare questions for each nursing home.</p><button className="button cream" onClick={() => setPage('facilities')}>Explore nursing homes <Icon name="arrow" size={18} /></button></div><div className="journey-illustration" aria-hidden="true"><BridgeMark /><span className="illustration-sun" /><span className="illustration-ground" /></div></section><section className="panel at-glance"><h2>Planning details</h2>{[['pin', 'Search area', intake.searchLocation || 'Your area'], ['clock', 'Possible move', intake.dischargeDate || intake.timing], ['people', 'Current setting', intake.currentSetting || 'Still exploring']].map(([icon, label, val]) => <div className="glance-row" key={label}><Icon name={icon} /><span>{label}<strong>{val}</strong></span></div>)}<button className="text-button" onClick={openPreferences}><Icon name="edit" size={15} />Review your answers</button></section></div>
@@ -519,7 +643,7 @@ export default function App() {
             <div className="plan-layout"><section role="tabpanel" aria-labelledby={`tab-${planTab.replaceAll(' ', '-')}`} className="panel plan-panel">
               {planTab === 'Checklist' && <><div className="section-title-row"><div><h2>Move-in checklist</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Based on your answers. Typical items: confirm with your facility. Medicare and Medicaid details change, so verify them at Medicare.gov or your state Medicaid agency.</p>{guidanceStatus === 'loading' && !guidance && <p className="field-hint" role="status">Building your checklist…</p>}<div className="task-list">{tasks.map((task, i) => { const soon = guidance?.tasks?.length ? task.priority === 1 : i < 2; return <div className={`task-row ${completed.includes(task.id) ? 'done' : ''}`} key={task.id}><label><input type="checkbox" checked={completed.includes(task.id)} onChange={() => toggleDone(task.id)} /><span><strong>{task.label}</strong><small>{task.detail}</small><span className={`task-timing ${soon ? 'soon' : ''}`}>{soon ? 'Start here' : 'Before move-in'}</span>{task.category && <span className="task-category">{categoryLabels[task.category] || task.category}</span>}</span></label><label className="task-owner"><span className="sr-only">Assign: {task.label}</span><select value={assignees[task.id] || 'Unassigned'} onChange={(e) => { setAssignees({ ...assignees, [task.id]: e.target.value }); patchTask(task.id, { assignee: e.target.value }) }}><option>Unassigned</option>{members.map((m) => <option key={m}>{m}</option>)}</select></label></div> })}</div></>}
               {planTab === 'Documents & packing' && <><h2>Documents and packing</h2><p className="field-hint">Ask the facility which documents to bring and which supplies it provides.</p>{packingGroups.map(([title, items], group) => <div className="packing-group" key={title}><h3>{title}</h3>{items.map((item, i) => <label className="packing-item" key={item}><input type="checkbox" checked={completed.includes(`packing-${group}-${i}`)} onChange={() => toggleDone(`packing-${group}-${i}`)} />{item}</label>)}</div>)}</>}
-              {planTab === 'Family' && <><div className="section-title-row"><div><h2>Family members</h2></div><button className="button secondary small" onClick={() => setModal({ type: 'member' })}><Icon name="plus" size={16} />Add family member</button></div><p className="field-hint">Add family and their contact details. People you mark are listed on the sheet for the nursing home. You can also invite someone to Carebridge so they can see and update this plan. Anyone listed can be given checklist tasks.</p><FamilyList family={family} canInvite={Boolean(planId)} youName={youName} taskCounts={Object.fromEntries(members.map((m) => [m, tasks.filter((t) => assignees[t.id] === m).length]))} onEdit={(person) => setModal({ type: 'member-edit', name: person.name })} onInvite={startInvite} onShowInvite={(person) => setModal({ type: 'invite', name: person.name })} /><div className="gentle-callout"><Icon name="heart" /><p>Include {name} in conversations and choices wherever possible. A plan works best when it reflects their wishes.</p></div><button className="text-button" onClick={() => setPlanTab('Checklist')}>Assign tasks in your checklist <Icon name="arrow" size={16} /></button></>}
+              {planTab === 'Family' && <><div className="section-title-row"><div><h2>Family members</h2></div><button className="button secondary small" onClick={() => setModal({ type: 'member' })}><Icon name="plus" size={16} />Add family member</button></div><p className="field-hint">Add family and their contact details. People you mark are listed on the sheet for the nursing home. You can also invite someone to Carebridge so they can see and update this plan. Anyone listed can be given checklist tasks.</p><FamilyList family={family} canInvite={canInvite} youName={youName} taskCounts={Object.fromEntries(members.map((m) => [m, tasks.filter((t) => assignees[t.id] === m).length]))} onEdit={(person) => setModal({ type: 'member-edit', name: person.name })} onInvite={startInvite} onShowInvite={(person) => setModal({ type: 'invite', name: person.name })} /><div className="gentle-callout"><Icon name="heart" /><p>Include {name} in conversations and choices wherever possible. A plan works best when it reflects their wishes.</p></div><button className="text-button" onClick={() => setPlanTab('Checklist')}>Assign tasks in your checklist <Icon name="arrow" size={16} /></button></>}
               {planTab === 'Downloads' && <><div className="section-title-row"><div><h2>Your move-in packet</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Everything you may want to hand over or take along. Files are made in your browser and are not uploaded anywhere. Review each one before sharing it.</p>
                 <div className="packet-actions"><button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : `Download full plan (${packet.filter((item) => item.available).length} files)`}</button><span className="field-hint">Your browser may ask to allow multiple downloads. Choose Allow.</span></div>
                 <ul className="packet-list">{packet.map((item) => <li key={item.id}><div><strong>{item.title}</strong><small>{item.description}</small>{!item.available && <small className="packet-unavailable">{item.unavailableReason}</small>}</div><button className="button secondary small" disabled={exporting || !item.available} onClick={() => downloadPacket([item.id])}><Icon name="download" size={15} />Download</button></li>)}</ul>
@@ -529,16 +653,16 @@ export default function App() {
         </div></main>
       </div><ColorVisionControls value={colorVisionMode} onChange={setColorVisionMode} /><button className="floating-help" onClick={() => help()} aria-label="Open guided help" title="Guided help"><Icon name="info" size={23} /></button>
     </div>}
-    {(modal?.type === 'account' || modal?.type === 'signin') && <Dialog title={modal.type === 'signin' ? 'Open your saved plan' : 'Create a transition plan'} subtitle="Your plan is stored in this browser." onClose={closeModal}>
-      <div className="account-demo-note"><Icon name="shield" size={18} />Demo only.</div>
-      <form onSubmit={auth} className="account-form" autoComplete="off">
+    {(modal?.type === 'account' || modal?.type === 'signin') && <Dialog title={modal.type === 'signin' ? 'Open your saved plan' : 'Create a transition plan'} subtitle={cloudMode ? 'Your plan is saved to your account, encrypted, so your family can open it from any device.' : 'Your plan is stored in this browser.'} onClose={closeModal}>
+      <div className="account-demo-note"><Icon name="shield" size={18} />{cloudMode ? 'Prototype. Please use made-up names and details.' : 'Demo only.'}</div>
+      <form onSubmit={auth} className="account-form" autoComplete={cloudMode ? 'on' : 'off'}>
         {modal.type === 'account' && <label className="text-field">Your first name<input name="name" placeholder="e.g. Maria" required maxLength={50} /></label>}
-        <label className="text-field">Demo email<input name="email" type="email" placeholder="maria@example.com" required autoComplete="off" /></label>
+        <label className="text-field">{cloudMode ? 'Email' : 'Demo email'}<input name="email" type="email" placeholder="maria@example.com" required autoComplete={cloudMode ? 'email' : 'off'} /></label>
         {modal.type === 'account' && <label className="text-field">Phone<span className="optional">So the nursing home can reach you</span><input name="phone" type="tel" inputMode="tel" maxLength={30} placeholder="(615) 555-0142" autoComplete="off" /></label>}
-        <label className="text-field">Demo password<input name="password" type="password" placeholder="Use any made-up password" required autoComplete="new-password" minLength={4} /></label>
-        <p className="field-hint">Your demo email identifies your saved plan on this device. Passwords are not checked, saved, or sent anywhere. This is a simulated account.</p>
+        <label className="text-field">{cloudMode ? 'Password' : 'Demo password'}<input name="password" type="password" placeholder={cloudMode ? (modal.type === 'account' ? 'At least 10 characters' : 'Your password') : 'Use any made-up password'} required autoComplete={cloudMode && modal.type === 'signin' ? 'current-password' : 'new-password'} minLength={cloudMode ? (modal.type === 'account' ? 10 : undefined) : 4} /></label>
+        <p className="field-hint">{cloudMode ? 'Use a password you don’t use anywhere else. Your details and plan are stored encrypted. This prototype has no password reset, so remember it.' : 'Your demo email identifies your saved plan on this device. Passwords are not checked, saved, or sent anywhere. This is a simulated account.'}</p>
         {authError && <p className="account-error" role="alert">{authError}</p>}
-        <button className="button primary full" type="submit">{modal.type === 'signin' ? 'Open workspace' : 'Create a plan'}<Icon name="arrow" size={17} /></button>
+        <button className="button primary full" type="submit" disabled={authBusy}>{authBusy ? (modal.type === 'signin' ? 'Signing in…' : 'Creating your plan…') : modal.type === 'signin' ? 'Open workspace' : 'Create a plan'}<Icon name="arrow" size={17} /></button>
       </form>
       {loadDraft() && <button className="text-button account-switch" onClick={() => {
         let previous
@@ -555,12 +679,20 @@ export default function App() {
     </Dialog>}
     {activeFacility && <Dialog title={activeFacility.name} subtitle={activeFacility.isFictional ? 'Fictional sample facility · no live availability or provider data' : 'CMS Care Compare data · no live availability or costs'} onClose={closeModal} wide>{activeFacility.isFictional && <Building variant={facilities.indexOf(activeFacility)} />}<Tabs items={['Overview', 'Inspection', 'Call questions']} value={detailTab} onChange={setDetailTab} label="Facility details" /><div role="tabpanel" aria-labelledby={`tab-${detailTab.replaceAll(' ', '-')}`} className="facility-dialog-content">{detailTab === 'Overview' && !activeFacility.isFictional && <LiveOverview f={activeFacility} />}{detailTab === 'Overview' && activeFacility.isFictional && <><p>{activeFacility.description}</p><div className="detail-facts">{[['Example distance', `${activeFacility.distance} miles`], ['Sample nursing hours', `${activeFacility.staffingHours} / resident / day`], ['Example languages', activeFacility.languages.join(', ')], ['Example room options', activeFacility.roomOptions.join(', ')]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><h3>Services shown in this example</h3><div className="facility-features">{activeFacility.provides.map((v) => <span key={v}>{v}</span>)}</div><div className="gentle-callout"><Icon name="clock" /><p>Confirm openings, support needs, coverage, and costs. None have been verified in this prototype.</p></div></>}{detailTab === 'Inspection' && !activeFacility.isFictional && <LiveInspection f={activeFacility} detail={facilityDetails[activeFacility.ccn]} ask={askState} onAsk={askFacility} />}{detailTab === 'Inspection' && activeFacility.isFictional && <><span className="draft-badge">ILLUSTRATIVE REPORT</span><h3>{activeFacility.inspectionLabel}</h3><p>{activeFacility.inspectionNote}</p><div className="question-highlight">Ask: “What was identified in the most recent inspection, and what has changed since?”</div><a className="text-link" href="https://www.medicare.gov/care-compare/" target="_blank" rel="noreferrer">Look up real records on Medicare Care Compare <Icon name="external" size={15} /></a></>}{detailTab === 'Call questions' && <><p className="field-hint">A starting script for your family. This demo does not place calls.</p><p className="call-script">“Hello, I’m helping {name} explore a nursing home stay. Could we talk through a few questions?”</p><ol className="question-list">{[...activeFacility.questions, 'Do you have an opening for our possible move date?', 'Who can explain the costs and coverage for our situation?'].map((q) => <li key={q}>{q}</li>)}</ol></>}</div><div className="dialog-actions"><button className="button secondary" aria-pressed={shortlist.includes(activeFacility.id)} onClick={() => toggleSaved(activeFacility.id)}><Icon name="heart" size={17} />{shortlist.includes(activeFacility.id) ? 'Saved to shortlist' : 'Save this place'}</button><button className="button primary" onClick={() => { setChosenFacility(activeFacility.id); setShortlist((current) => current.includes(activeFacility.id) ? current : [...current, activeFacility.id]); setPage('plan'); setModal(null); setNotice(activeFacility.isFictional ? 'Sample facility added to your draft plan. No booking has been made.' : 'Facility added to your draft plan as a planning reference. No booking has been made.') }}>Use in my draft plan <Icon name="arrow" size={17} /></button></div></Dialog>}
     {modal?.type === 'comparison' && <Dialog title="Your shortlist, side by side" wide className="comparison-dialog" onClose={closeModal}><FacilityComparison homes={savedHomes} onDetails={(id) => details(id)} onDownload={downloadComparison} exporting={exporting} /></Dialog>}
-    {modal?.type === 'member' && <Dialog title="Add a family member" subtitle="Add their contact details, and invite them to Carebridge if you like." onClose={closeModal}><MemberForm canInvite={Boolean(planId)} residentName={name} onSubmit={(values) => saveMember(values, null)} /></Dialog>}
-    {modal?.type === 'member-edit' && family.find((person) => person.name === modal.name) && <Dialog title="Contact details" subtitle="Used on the nursing-home sheet and in your plan." onClose={closeModal}><MemberForm person={family.find((person) => person.name === modal.name)} canInvite={Boolean(planId)} residentName={name} onSubmit={(values) => saveMember(values, family.find((person) => person.name === modal.name))} /></Dialog>}
-    {modal?.type === 'invite' && links.byMember[modal.name] && <Dialog title={`Invite ${modal.name}`} subtitle="Share the link or the code." onClose={closeModal}><InviteReady invite={{ memberName: modal.name, code: links.byMember[modal.name].code }} link={inviteLink(inviteBase(), links.byMember[modal.name].code)} ownerName={links.owner?.name} mailto={family.find((person) => person.name === modal.name)?.email ? inviteMailto({ email: family.find((person) => person.name === modal.name).email, ownerName: links.owner?.name, link: inviteLink(inviteBase(), links.byMember[modal.name].code), code: links.byMember[modal.name].code }) : ''} onCopy={copyText} onCancel={() => removeInvite(links.byMember[modal.name].code)} /></Dialog>}
-    {modal?.type === 'join' && <Dialog title="Join a family plan" subtitle="Register with your own contact details to see and update a family’s plan." onClose={() => { clearJoinParam(); closeModal() }}><div className="account-demo-note"><Icon name="shield" size={18} />Demo only.</div><JoinForm initialCode={joinCode} onSubmit={joinPlan} /><button className="text-button account-switch" onClick={() => { clearJoinParam(); setModal({ type: 'signin' }) }}>Already registered? Sign in</button></Dialog>}
+    {modal?.type === 'member' && <Dialog title="Add a family member" subtitle="Add their contact details, and invite them to Carebridge if you like." onClose={closeModal}><MemberForm canInvite={canInvite} cloud={cloudMode} residentName={name} onSubmit={(values) => saveMember(values, null)} /></Dialog>}
+    {editingPerson && <Dialog title="Contact details" subtitle="Used on the nursing-home sheet and in your plan." onClose={closeModal}><MemberForm person={editingPerson} canInvite={canInvite} cloud={cloudMode} lockedContact={cloudMode && editingPerson.hasAccount && editingPerson.name !== youName} residentName={name} onSubmit={(values) => saveMember(values, editingPerson)} /></Dialog>}
+    {modal?.type === 'invite' && links.byMember[modal.name] && <Dialog title={`Invite ${modal.name}`} subtitle="Share the link or the code." onClose={closeModal}><InviteReady invite={{ memberName: modal.name, code: links.byMember[modal.name].code }} link={inviteLink(inviteBase(), links.byMember[modal.name].code)} ownerName={links.owner?.name} mailto={family.find((person) => person.name === modal.name)?.email ? inviteMailto({ email: family.find((person) => person.name === modal.name).email, ownerName: links.owner?.name, link: inviteLink(inviteBase(), links.byMember[modal.name].code), code: links.byMember[modal.name].code }) : ''} onCopy={copyText} onCancel={() => removeInvite(links.byMember[modal.name].code)} cloud={cloudMode} /></Dialog>}
+    {modal?.type === 'join' && <Dialog title="Join a family plan" subtitle="Register with your own contact details to see and update a family’s plan." onClose={() => { clearJoinParam(); closeModal() }}><div className="account-demo-note"><Icon name="shield" size={18} />{cloudMode ? 'Prototype. Please use made-up names and details.' : 'Demo only.'}</div><JoinForm initialCode={joinCode} onSubmit={joinPlan} lookup={store.preview} cloud={cloudMode} /><button className="text-button account-switch" onClick={() => { clearJoinParam(); setModal({ type: 'signin' }) }}>Already registered? Sign in</button></Dialog>}
     {modal?.type === 'profile' && <Dialog title={`Hello, I’m ${name}.`} subtitle="Know Me · a family-written draft to review together" onClose={closeModal}><div className="know-me-preview"><span className="profile-flower"><Icon name="sun" size={46} /></span><p>Review these details with {name} before sharing them with staff.</p>{[['My morning routine', profile.morning], ['Things I enjoy', profile.interests?.join(', ')], ['What brings comfort', profile.comforts?.join(', ')], ['How to connect with me', profile.communication?.join(', ')], ['Other things to know', profile.notes]].filter(([, value]) => value).map(([label, value]) => <div key={label}><h3>{label}</h3><p>{value}</p></div>)}{profile.aiDraft && <><span className="draft-badge">AI DRAFT · REVIEW BEFORE SHARING</span>{knowMeSections.filter(([key]) => profile.aiDraft[key]).map(([key, label]) => <div key={key}><h3>{label}</h3><p>{profile.aiDraft[key]}</p></div>)}</>}</div><button className="button primary full" disabled={exporting} onClick={() => download('know-me')}><Icon name="download" size={17} />{exporting ? 'Creating PDF...' : 'Download Know Me PDF'}</button></Dialog>}
     {modal?.type === 'help' && <Dialog title="Help with your transition plan" onClose={closeModal}><div className="help-topics">{['Start here', 'Care team', 'Coverage', 'What to bring'].map((topic) => <button className={helpTopic === topic ? 'selected' : ''} key={topic} onClick={() => setHelpTopic(topic)}>{topic}</button>)}</div><div className="help-response" aria-live="polite"><span className="soft-icon"><Icon name="chat" size={21} /></span>{helpTopic === 'Start here' && <><h3>Where to start</h3><p>Record what you know about {name} in the intake. You can leave answers blank and update them after speaking with the care team.</p></>}{helpTopic === 'Care team' && <><h3>Questions for the care team</h3><ul>{(intake.currentSetting === 'Hospital' ? careQuestions.hospital : careQuestions.general).map((q) => <li key={q}>{q}</li>)}</ul></>}{helpTopic === 'Coverage' && <><h3>What to ask about coverage</h3><p>Ask the insurer or benefits contact and facility what applies to this person’s situation, what needs approval, and what costs to expect.</p><p>This prototype doesn’t check benefits or determine eligibility.</p><a className="text-link" href="https://www.medicare.gov/" target="_blank" rel="noreferrer">Visit Medicare.gov <Icon name="external" size={14} /></a></>}{helpTopic === 'What to bring' && <><h3>What to pack</h3><p>Ask the facility for its packing list and what it provides. Your plan has a sample checklist for clothing, personal aids, documents, and familiar comforts.</p><button className="button secondary" onClick={() => { setPlanTab('Documents & packing'); setPage('plan'); setModal(null) }}>Open packing checklist <Icon name="arrow" size={16} /></button></>}</div><p className="field-hint">Your family and care team review the plan and make decisions.</p></Dialog>}
+    {modal?.type === 'delete' && <Dialog title="Delete your account?" subtitle={links.isOwner ? 'This deletes the family plan for everyone on it.' : 'You will be removed from this family plan. It stays for everyone else.'} onClose={closeModal}>
+      <form onSubmit={deleteAccount} className="account-form" autoComplete="off">
+        <p className="field-hint">{links.isOwner ? 'Your account, the whole plan, every invite and everyone’s access to it are permanently erased. Download your plan first if you want a copy.' : 'Your account and your contact details are permanently erased. This can’t be undone.'}</p>
+        <label className="text-field">Confirm with your password<input name="password" type="password" required autoComplete="current-password" /></label>
+        {deleteError && <p className="account-error" role="alert">{deleteError}</p>}
+        <div className="confirmation-actions"><button className="button danger" type="submit" disabled={authBusy}>{authBusy ? 'Deleting…' : 'Delete my account'}</button><button type="button" className="text-button" onClick={closeModal}>Keep my account</button></div>
+      </form>
+    </Dialog>}
     <div className="toast-region" role="status" aria-live="polite">{notice && <div className="toast"><Icon name="check" size={18} />{notice}</div>}</div>
   </>
 }
