@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Carebridge bridge logo on a dark green background">
+  <rect width="1024" height="1024" fill="#174d43"/>
+  <g transform="translate(140 130) scale(20.6666667)" fill="none" stroke="#fffef7" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 24V13M32 24V13M4 18C11 18 10 8 18 8S25 18 32 18M4 24H32M10 24V16M18 24V9M26 24V16"/>
+    <path d="M3 29H33"/>
+  </g>
+</svg>

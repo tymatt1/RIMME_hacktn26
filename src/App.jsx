@@ -39,6 +39,23 @@ const headings = {
 }
 const careLevels = ['No help', 'Some help', 'Substantial help', 'Not sure']
 const planTabs = ['Checklist', 'Documents & packing', 'Family', 'Downloads']
+const colorVisionModes = [
+  ['standard', 'Standard'],
+  ['protanopia', 'Protanopia'],
+  ['deuteranopia', 'Deuteranopia'],
+  ['tritanopia', 'Tritanopia'],
+]
+const colorVisionStorageKey = 'carebridge-color-vision-v1'
+
+function initialColorVisionMode() {
+  if (typeof window === 'undefined') return 'standard'
+  try {
+    const stored = window.localStorage.getItem(colorVisionStorageKey)
+    return colorVisionModes.some(([id]) => id === stored) ? stored : 'standard'
+  } catch {
+    return 'standard'
+  }
+}
 
 function Field({ title, hint, children }) {
   return <fieldset className="field-group"><legend>{title}</legend>{hint && <p className="field-hint">{hint}</p>}{children}</fieldset>
@@ -53,6 +70,19 @@ function Choices({ name, options, value, onChange, multiple = false, limit, comp
 }
 function Tabs({ items, value, onChange, label }) {
   return <div className="tab-list" role="tablist" aria-label={label}>{items.map((item, i) => <button key={item} role="tab" id={`tab-${item.replaceAll(' ', '-')}`} aria-selected={value === item} tabIndex={value === item ? 0 : -1} onClick={() => onChange(item)} onKeyDown={(e) => { if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return; e.preventDefault(); const index = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : items.length - 1)) % items.length; onChange(items[index]); e.currentTarget.parentElement.children[index].focus() }}>{item}</button>)}</div>
+}
+function ColorVisionControls({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const activeLabel = colorVisionModes.find(([id]) => id === value)?.[1] || 'Standard'
+  return <div className="color-vision-picker" ref={ref} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }} onKeyDown={(event) => { if (event.key === 'Escape') { setOpen(false); event.currentTarget.querySelector('.color-vision-toggle')?.focus() } }}>
+    <button type="button" className="color-vision-toggle" aria-label={`Color vision: ${activeLabel}. Change palette`} aria-expanded={open} aria-controls="color-vision-options" title="Color vision settings" onClick={() => setOpen((current) => !current)}><Icon name="eye" size={23} /></button>
+    {open && <section className="color-vision-controls" id="color-vision-options" aria-label="Color vision settings">
+      <span className="color-vision-label">Color vision</span>
+      <div role="group" aria-label="Choose a color vision palette">{colorVisionModes.map(([id, label]) => <button type="button" key={id} className={value === id ? 'active' : ''} aria-pressed={value === id} onClick={() => { onChange(id); setOpen(false); window.requestAnimationFrame(() => ref.current?.querySelector('.color-vision-toggle')?.focus()) }}>{label}</button>)}</div>
+    </section>}
+    <span className="sr-only" aria-live="polite">{activeLabel} color palette active.</span>
+  </div>
 }
 function Dialog({ title, subtitle, onClose, children, wide, className = '' }) {
   const ref = useRef(null)
@@ -191,6 +221,7 @@ export default function App() {
   const [facilityDetails, setFacilityDetails] = useState({})
   const [askState, setAskState] = useState({ ccn: '', question: '', status: 'idle', answer: null })
   const [knowMeState, setKnowMeState] = useState('idle')
+  const [colorVisionMode, setColorVisionMode] = useState(initialColorVisionMode)
   const mainRef = useRef(null)
   const firstRender = useRef(true)
   const accountEpoch = useRef(0)
@@ -234,11 +265,15 @@ export default function App() {
   }, [accountId, legacyActive, page, returnPage, onboardingComplete, intake, shortlist, completed, profile, members, assignees, chosenFacility, guidance])
   useEffect(() => { setAuthError('') }, [modal?.type])
   useEffect(() => {
-    document.title = page === 'welcome' ? 'Carebridge | Nursing home transition planning' : `${headings[page][1]} | Carebridge`
+    document.title = page === 'welcome' ? 'carebridge | Nursing home transition planning' : `${headings[page][1]} | carebridge`
     if (!firstRender.current) { window.scrollTo({ top: 0, behavior: 'instant' }); mainRef.current?.focus({ preventScroll: true }) }
     firstRender.current = false
   }, [page])
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(timer) }, [notice])
+  useEffect(() => {
+    document.documentElement.dataset.colorVision = colorVisionMode
+    try { window.localStorage.setItem(colorVisionStorageKey, colorVisionMode) } catch { /* The palette still works for this visit. */ }
+  }, [colorVisionMode])
   const started = page !== 'welcome'
   // Real CMS facilities near the search location. If the API is unreachable, fall back to the fictional examples.
   useEffect(() => {
@@ -427,7 +462,7 @@ export default function App() {
             </section><aside className="plan-side"><section className="panel shortlist-panel"><h2>{selectedHome ? 'Selected nursing home' : 'Saved nursing homes'}</h2>{selectedHome ? <>{selectedHome.isFictional && <Building variant={facilities.indexOf(selectedHome)} />}<h3>{selectedHome.name}</h3><p>{selectedHome.isFictional ? 'Fictional selection for planning only. No reservation or admission has been made.' : 'Planning reference only. No reservation or admission has been made.'}</p><button className="text-button" onClick={() => setChosenFacility('')}>Clear selection</button></> : savedHomes.length ? savedHomes.map((f) => <button className="saved-place" key={f.id} onClick={() => details(f.id)}><Icon name="home" size={18} /><span>{f.name}</span><Icon name="arrow" size={15} /></button>) : <p>Save homes from the comparison screen to see them here.</p>}<button className="button secondary full" onClick={() => setPage('facilities')}>Explore nursing homes <Icon name="arrow" size={16} /></button></section><section className="help-card"><Icon name="chat" size={26} /><h3>Questions about the move?</h3><p>Read prepared guidance on care-team conversations, coverage questions, and packing.</p><button className="text-button" onClick={() => help()}>View help topics <Icon name="arrow" size={16} /></button></section></aside></div>
           </>}
         </div></main>
-      </div><button className="floating-help" onClick={() => help()} aria-label="Open guided help" title="Guided help"><Icon name="info" size={23} /></button>
+      </div><ColorVisionControls value={colorVisionMode} onChange={setColorVisionMode} /><button className="floating-help" onClick={() => help()} aria-label="Open guided help" title="Guided help"><Icon name="info" size={23} /></button>
     </div>}
     {(modal?.type === 'account' || modal?.type === 'signin') && <Dialog title={modal.type === 'signin' ? 'Open your saved plan' : 'Create a transition plan'} subtitle="Your plan is stored in this browser." onClose={closeModal}>
       <div className="account-demo-note"><Icon name="shield" size={18} />Demo only.</div>
