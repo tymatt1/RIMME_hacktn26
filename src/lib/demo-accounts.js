@@ -47,7 +47,7 @@ export function signOutDemoAccount() {
 export function resumePage(draft) {
   const page = draft.page === 'welcome' ? draft.returnPage : draft.page
   if (draft.onboardingComplete) return ['overview', 'facilities', 'plan'].includes(page) ? page : 'overview'
-  return ['situation', 'support', 'priorities'].includes(page) ? page : 'situation'
+  return ['situation', 'support', 'priorities', 'knowme'].includes(page) ? page : 'situation'
 }
 
 export function openPreviousDemoPlan() {

@@ -11,6 +11,7 @@ import { buildTasks } from './lib/plan.js'
 import { blankIntake, toPlanIntake, visibleFacilities, loadDraft, saveDraft } from './lib/demo-model.js'
 import { api } from './lib/api.js'
 import { normalizePriorityWeights } from './lib/priorities.js'
+import { packetListing } from './lib/packet-meta.js'
 import { accountDraftKey, createDemoAccount, freshAccountPlan, loadDemoSession, openPreviousDemoPlan, resumePage, signInDemoAccount, signOutDemoAccount } from './lib/demo-accounts.js'
 import { facilityFromApi, guidanceFromResponse, intakeKey, toBackendIntake, toKnowMeBody, categoryLabels, liveFilters, knowMeSections, scoreWeights, matchScore, needsProfile, weightShares, scoreReasons } from './lib/api-model.js'
 import { LiveOverview, LiveInspection } from './components/FacilityLive.jsx'
@@ -20,6 +21,7 @@ const intakeSteps = [
   ['situation', 'Your situation', 'people'],
   ['support', 'Everyday support', 'heart'],
   ['priorities', 'Your family’s priorities', 'leaf'],
+  ['knowme', 'Know Me', 'book'],
 ]
 const nav = [
   ['overview', 'Your starting point', 'sun'],
@@ -30,12 +32,13 @@ const headings = {
   situation: ['', 'Who needs care?', 'Tell us who you’re helping and what’s happening now.'],
   support: ['', 'What help do they need?', 'Choose the help they need with daily activities, mobility, and communication.'],
   priorities: ['', 'What should we look for?', 'Set your search area, travel distance, budget, and priorities.'],
+  knowme: ['', 'Help staff get to know them', 'Share routines and what comforts them. Staff can read this before the move.'],
   overview: ['', 'Your starting point', 'Review your answers and decide what to ask the care team before comparing nursing homes.'],
   facilities: ['', 'Compare nursing homes', 'Save homes to your shortlist, then compare their services and questions to ask on a visit.'],
   plan: ['', 'Your transition plan', 'Assign move-in tasks to family members and keep the documents and packing list here.'],
 }
 const careLevels = ['No help', 'Some help', 'Substantial help', 'Not sure']
-const planTabs = ['Checklist', 'Documents & packing', 'Family', 'Know Me']
+const planTabs = ['Checklist', 'Documents & packing', 'Family', 'Downloads']
 
 function Field({ title, hint, children }) {
   return <fieldset className="field-group"><legend>{title}</legend>{hint && <p className="field-hint">{hint}</p>}{children}</fieldset>
@@ -79,7 +82,7 @@ function Building({ variant = 0 }) {
 function Distance({ value, onChange }) {
   return <div className="distance-control"><div className="distance-value"><span>Up to <strong>{value}</strong> miles</span><div><button className="icon-button" aria-label="Decrease travel distance" disabled={value <= 5} onClick={() => onChange(Math.max(5, value - 5))}><Icon name="minus" size={16} /></button><button className="icon-button" aria-label="Increase travel distance" disabled={value >= 50} onClick={() => onChange(Math.min(50, value + 5))}><Icon name="plus" size={16} /></button></div></div><input aria-label="Maximum travel distance in miles" type="range" min="5" max="50" step="5" value={value} onChange={(e) => onChange(Number(e.target.value))} /><div className="range-labels"><span>5 miles</span><span>50 miles</span></div></div>
 }
-function IntakeWorkflow({ page, intake, patch, actions, editing = false }) {
+function IntakeWorkflow({ page, intake, patch, actions, editing = false, profile = {}, patchProfile = () => {} }) {
   return <div className="intake-layout"><section className="panel form-panel">
             {page === 'situation' && <>
               <Field title="Who are you planning for?"><Choices name="relationship" options={['Myself', 'Parent', 'Grandparent', 'Spouse or partner', 'Someone else']} value={intake.relationship} onChange={(v) => patch({ relationship: v })} compact /></Field>
@@ -112,12 +115,19 @@ function IntakeWorkflow({ page, intake, patch, actions, editing = false }) {
               <Field title="How much does each of these matter to your family?" hint="Slide toward “Very important” for what matters most. This sets how homes are ranked for you, and you can change it later while looking at results."><PrioritySliders value={intake.priorityWeights} onChange={(topic, value) => patch({ priorityWeights: { ...normalizePriorityWeights(intake.priorityWeights), [topic]: value } })} /></Field>
               <Field title="Who’s helping coordinate?"><Choices name="coordinators" options={['Just me', 'Several relatives', 'Friends or other supporters', 'Still figuring this out']} value={intake.coordinators} onChange={(v) => patch({ coordinators: v })} compact /></Field>
               <Field title="What could your support network help with?" hint="Optional. Assign tasks in your plan later."><Choices name="familySupport" options={['Calls', 'Facility visits', 'Paperwork', 'Packing', 'Transportation']} multiple value={intake.familySupport} onChange={(v) => patch({ familySupport: v })} compact /></Field>
-              {actions('support', 'overview', 'See your starting point')}
+              {actions('support', 'knowme')}
+            </>}
+            {page === 'knowme' && <>
+              <p className="field-hint">Everything here is optional. Share what would help staff get to know {intake.personName.trim() || 'them'} before the move.{editing ? '' : ' You can change it later in My preferences.'}</p>
+              {knowMePrompts.filter((prompt) => prompt.id !== 'preferredName').map((prompt) => prompt.choices
+                ? <Field key={prompt.id} title={prompt.label}><Choices name={`profile-${prompt.id}`} options={prompt.choices} value={profile[prompt.id] || (prompt.type === 'singleChoice' ? '' : [])} multiple={prompt.type === 'multiChoice'} onChange={(v) => patchProfile({ [prompt.id]: v })} compact /></Field>
+                : <label className="text-field" key={prompt.id}>{prompt.label}<span className="optional">Optional</span><textarea rows={3} value={profile.notes || ''} onChange={(e) => patchProfile({ notes: e.target.value })} placeholder="For example, how they like to start the day or what helps when they’re upset." /></label>)}
+              {actions('priorities', 'overview', 'See your starting point')}
             </>}
           </section><div className="intake-storage-note"><Icon name="shield" size={18} /><p>{editing ? 'Changes update your plan only when you save.' : 'Answers stay in this browser.'}</p></div></div>
 }
 function IntakeProgress({ step, onChange }) {
-  return <div className="intake-progress" aria-label={`Step ${step + 1} of 3`}>{intakeSteps.map(([id, label], i) => <button key={id} className={i <= step ? 'reached' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => onChange(i)}><span>{i < step ? <Icon name="check" size={13} /> : i + 1}</span>{label}</button>)}</div>
+  return <div className="intake-progress" aria-label={`Step ${step + 1} of ${intakeSteps.length}`}>{intakeSteps.map(([id, label], i) => <button key={id} className={i <= step ? 'reached' : ''} aria-current={i === step ? 'step' : undefined} onClick={() => onChange(i)}><span>{i < step ? <Icon name="check" size={13} /> : i + 1}</span>{label}</button>)}</div>
 }
 function ProfileMenu({ caregiverName, personName, onPreferences, onSignOut }) {
   const [open, setOpen] = useState(false)
@@ -160,6 +170,8 @@ export default function App() {
   const [modal, setModal] = useState(null)
   const [onboardingComplete, setOnboardingComplete] = useState(stored?.onboardingComplete || false)
   const [preferenceDraft, setPreferenceDraft] = useState(null)
+  const [profileDraft, setProfileDraft] = useState(null)
+  const [exportLabel, setExportLabel] = useState('')
   const [preferenceStep, setPreferenceStep] = useState(0)
   const [confirmPreferences, setConfirmPreferences] = useState(false)
   const [detailTab, setDetailTab] = useState('Overview')
@@ -192,7 +204,7 @@ export default function App() {
   const done = tasks.filter((task) => completed.includes(task.id)).length
   const percent = Math.round(done / tasks.length * 100)
   const summary = buildCareSummary(intake)
-  const step = ['situation', 'support', 'priorities'].indexOf(page)
+  const step = intakeSteps.findIndex(([id]) => id === page)
   const live = catalogState.source === 'live'
   const needs = needsProfile(intake)
   const weights = scoreWeights(intake.priorityWeights, needs)
@@ -204,6 +216,7 @@ export default function App() {
   const shares = weightShares(weights, { distance: live && catalogState.resolved })
   const rankIds = live ? [...listed].filter((f) => f.match !== null).sort((a, b) => b.match - a.match || a.name.localeCompare(b.name)).map((f) => f.id) : []
   const savedHomes = catalog.filter((f) => shortlist.includes(f.id))
+  const packet = packetListing({ facilities: savedHomes })
   // Apply new priority sliders from the results tab: remember today's order, reload the homes, then re-rank.
   const applyPriorities = (next) => {
     setRankShift({ ranks: Object.fromEntries(rankIds.map((id, index) => [id, index + 1])), travelMiles: intake.travelMiles, searchLocation: intake.searchLocation })
@@ -307,17 +320,29 @@ export default function App() {
     setKnowMeState('loading')
     try { const data = await api.draftKnowMe(guidance.planId, toKnowMeBody(profile, intake.personName.trim())); if (epoch !== accountEpoch.current) return; setProfile((current) => ({ ...current, aiDraft: data.know_me })); setKnowMeState('ready'); setNotice('Know Me draft ready. Review and edit it before sharing.') } catch { if (epoch === accountEpoch.current) setKnowMeState('error') }
   }
+  const planData = () => ({ intake, facilities: savedHomes, planningFacility: selectedHome || null, checklist: tasks.map((task) => ({ ...task, completed: completed.includes(task.id), assignedTo: assignees[task.id] || 'Unassigned' })), checkedPackingItems: completed.filter((id) => id.startsWith('packing-')), family: members, knowMe: profile, aiAssistedChecklist: Boolean(guidance?.tasks?.length), careTeamQuestions: guidanceReady && guidance.questions.length ? guidance.questions : summary.questions, careExplainer: guidanceReady ? guidance.explainer : '' })
   async function download(kind = 'plan') {
     if (exporting) return
     setExporting(true)
-    const data = { intake, facilities: savedHomes, planningFacility: selectedHome || null, checklist: tasks.map((task) => ({ ...task, completed: completed.includes(task.id), assignedTo: assignees[task.id] || 'Unassigned' })), checkedPackingItems: completed.filter((id) => id.startsWith('packing-')), family: members, knowMe: profile, aiAssistedChecklist: Boolean(guidance?.tasks?.length) }
     try {
       const { downloadPlanPdf } = await import('./lib/plan-pdf.js')
-      await downloadPlanPdf(data, kind)
+      await downloadPlanPdf(planData(), kind)
       setNotice(kind === 'know-me' ? 'Your Know Me PDF has been downloaded.' : 'Your transition plan PDF has been downloaded.')
     } catch {
       setNotice('The PDF could not be created. Please try downloading it again.')
     } finally { setExporting(false) }
+  }
+  // One button for the whole move-in packet (or a single file from it): each PDF is made in the browser and saved in turn.
+  async function downloadPacket(ids) {
+    if (exporting) return
+    setExporting(true); setExportLabel('Creating files…')
+    try {
+      const { downloadPacketPdfs } = await import('./lib/plan-pdf.js')
+      const count = await downloadPacketPdfs(planData(), { ids, onProgress: (index, total) => setExportLabel(`Saving file ${index} of ${total}…`) })
+      setNotice(count === 1 ? 'Your PDF has been downloaded.' : `${count} PDF files have been downloaded. If your browser asks to allow multiple downloads, choose Allow.`)
+    } catch {
+      setNotice('The files could not be created. Please try downloading them again.')
+    } finally { setExporting(false); setExportLabel('') }
   }
   async function downloadComparison() {
     if (exporting || savedHomes.length < 2) return
@@ -340,21 +365,21 @@ export default function App() {
   function actions(previous, next, label = 'Continue') {
     return <div className="form-actions"><button className="text-button" onClick={() => setPage(previous)}><Icon name="back" size={17} />Back</button><span className="save-hint"><Icon name="shield" size={15} />{storageSaved ? 'Saved on this device' : 'Browser storage unavailable · download your plan'}</span><button className="button primary" onClick={() => { if (next === 'overview') setOnboardingComplete(true); setPage(next) }}>{label}<Icon name="arrow" size={18} /></button></div>
   }
-  function openPreferences() {
-    setPreferenceDraft(window.structuredClone(intake)); setPreferenceStep(0); setConfirmPreferences(false); setModal({ type: 'preferences' })
+  function openPreferences(startStep = 0) {
+    setPreferenceDraft(window.structuredClone(intake)); setProfileDraft(window.structuredClone(profile)); setPreferenceStep(Number.isInteger(startStep) ? startStep : 0); setConfirmPreferences(false); setModal({ type: 'preferences' })
   }
   function patchPreferences(values) {
     setPreferenceDraft((current) => ({ ...current, ...values, ...('currentSetting' in values && values.currentSetting !== 'Hospital' ? { dischargeDate: '', hospitalStatus: 'Not sure' } : {}) }))
   }
   function savePreferences() {
-    setIntake(preferenceDraft); setModal(null); setConfirmPreferences(false); setNotice('Your preferences have been saved.')
+    setIntake(preferenceDraft); setProfile(profileDraft); setModal(null); setConfirmPreferences(false); setNotice('Your preferences have been saved.')
   }
   function requestClosePreferences() {
-    if (JSON.stringify(preferenceDraft) !== JSON.stringify(intake)) setConfirmPreferences(true)
+    if (JSON.stringify(preferenceDraft) !== JSON.stringify(intake) || JSON.stringify(profileDraft) !== JSON.stringify(profile)) setConfirmPreferences(true)
     else setModal(null)
   }
   function preferenceActions() {
-    return <div className="form-actions preference-actions">{preferenceStep > 0 && <button className="text-button" onClick={() => setPreferenceStep(preferenceStep - 1)}><Icon name="back" size={17} />Back</button>}<div className="preference-action-buttons"><button className="button secondary" onClick={savePreferences}>Save changes</button>{preferenceStep < 2 && <button className="button primary" onClick={() => setPreferenceStep(preferenceStep + 1)}>Continue<Icon name="arrow" size={18} /></button>}</div></div>
+    return <div className="form-actions preference-actions">{preferenceStep > 0 && <button className="text-button" onClick={() => setPreferenceStep(preferenceStep - 1)}><Icon name="back" size={17} />Back</button>}<div className="preference-action-buttons"><button className="button secondary" onClick={savePreferences}>Save changes</button>{preferenceStep < intakeSteps.length - 1 && <button className="button primary" onClick={() => setPreferenceStep(preferenceStep + 1)}>Continue<Icon name="arrow" size={18} /></button>}</div></div>
   }
   function details(id) { setDetailTab('Overview'); setModal({ type: 'facility', id }) }
   function help(topic = 'Start here') { setHelpTopic(topic); setModal({ type: 'help' }) }
@@ -364,11 +389,11 @@ export default function App() {
       <a className="skip-link" href="#main">Skip to content</a>
       {step < 0 && <aside className="sidebar"><CarebridgeLogo onClick={goHome} /><nav className="primary-navigation" aria-label="Your plan navigation">{nav.map(([id, label]) => <button className={`primary-nav-link section-${id} ${page === id ? 'active' : ''}`} key={id} aria-label={label} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}><span className="primary-nav-label">{label}</span></button>)}</nav></aside>}
       <div className="workspace">
-        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of 3</span><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /></div></> : <div className="account-controls"><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
-        <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button secondary" disabled={exporting} onClick={() => download()}><Icon name="download" size={17} />{exporting ? 'Creating PDF...' : 'Download plan (PDF)'}</button>}</div>
+        <header className="workspace-header">{step >= 0 ? <><CarebridgeLogo onClick={goHome} /><div className="account-controls"><span className="onboarding-label">Getting started · Step {step + 1} of {intakeSteps.length}</span><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /></div></> : <div className="account-controls"><ProfileMenu caregiverName={intake.caregiverName} personName={name} onPreferences={openPreferences} onSignOut={signOut} /><button className="icon-button settings-button" aria-label="Settings — My preferences" title="My preferences" onClick={openPreferences}><Icon name="settings" size={24} /></button></div>}</header>
+        <main id="main" tabIndex={-1} ref={mainRef}><div className="page-content" key={page}><div className="page-heading"><div><h1>{headings[page][1]}</h1><p className="intro">{headings[page][2]}</p></div>{page === 'plan' && <button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : 'Download full plan'}</button>}</div>
           {step >= 0 && <IntakeProgress step={step} onChange={(i) => setPage(intakeSteps[i][0])} />}
 
-          {step >= 0 && <IntakeWorkflow page={page} intake={intake} patch={patch} actions={actions} />}
+          {step >= 0 && <IntakeWorkflow page={page} intake={intake} patch={patch} profile={profile} patchProfile={(values) => setProfile((current) => ({ ...current, ...values }))} actions={actions} />}
 
           {page === 'overview' && <>
             <div className="overview-grid"><section className="journey-card"><div><h2>Compare homes for {name}</h2><p>Use the needs and priorities you’ve recorded to prepare questions for each nursing home.</p><button className="button cream" onClick={() => setPage('facilities')}>Explore nursing homes <Icon name="arrow" size={18} /></button></div><div className="journey-illustration" aria-hidden="true"><BridgeMark /><span className="illustration-sun" /><span className="illustration-ground" /></div></section><section className="panel at-glance"><h2>Planning details</h2>{[['pin', 'Search area', intake.searchLocation || 'Your area'], ['clock', 'Possible move', intake.dischargeDate || intake.timing], ['people', 'Current setting', intake.currentSetting || 'Still exploring']].map(([icon, label, val]) => <div className="glance-row" key={label}><Icon name={icon} /><span>{label}<strong>{val}</strong></span></div>)}<button className="text-button" onClick={openPreferences}><Icon name="edit" size={15} />Review your answers</button></section></div>
@@ -395,7 +420,10 @@ export default function App() {
               {planTab === 'Checklist' && <><div className="section-title-row"><div><h2>Move-in checklist</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Based on your answers. Typical items: confirm with your facility. Medicare and Medicaid details change, so verify them at Medicare.gov or your state Medicaid agency.</p>{guidanceStatus === 'loading' && !guidance && <p className="field-hint" role="status">Building your checklist…</p>}<div className="task-list">{tasks.map((task, i) => { const soon = guidance?.tasks?.length ? task.priority === 1 : i < 2; return <div className={`task-row ${completed.includes(task.id) ? 'done' : ''}`} key={task.id}><label><input type="checkbox" checked={completed.includes(task.id)} onChange={() => toggleDone(task.id)} /><span><strong>{task.label}</strong><small>{task.detail}</small><span className={`task-timing ${soon ? 'soon' : ''}`}>{soon ? 'Start here' : 'Before move-in'}</span>{task.category && <span className="task-category">{categoryLabels[task.category] || task.category}</span>}</span></label><label className="task-owner"><span className="sr-only">Assign: {task.label}</span><select value={assignees[task.id] || 'Unassigned'} onChange={(e) => { setAssignees({ ...assignees, [task.id]: e.target.value }); patchTask(task.id, { assignee: e.target.value }) }}><option>Unassigned</option>{members.map((m) => <option key={m}>{m}</option>)}</select></label></div> })}</div></>}
               {planTab === 'Documents & packing' && <><h2>Documents and packing</h2><p className="field-hint">Ask the facility which documents to bring and which supplies it provides.</p>{packingGroups.map(([title, items], group) => <div className="packing-group" key={title}><h3>{title}</h3>{items.map((item, i) => <label className="packing-item" key={item}><input type="checkbox" checked={completed.includes(`packing-${group}-${i}`)} onChange={() => toggleDone(`packing-${group}-${i}`)} />{item}</label>)}</div>)}</>}
               {planTab === 'Family' && <><div className="section-title-row"><div><h2>Family members</h2></div><button className="button secondary small" onClick={() => setModal({ type: 'member' })}><Icon name="plus" size={16} />Add family member</button></div><p className="field-hint">Add sample names, then assign checklist tasks. No invitations are sent.</p><div className="family-list">{members.map((m, i) => <div className="family-member" key={m}><span className={`member-avatar member-${i % 3}`}>{m[0]}</span><span><strong>{m}</strong><small>{i === 0 ? 'Main family contact' : 'Family member'}</small></span><span>{tasks.filter((t) => assignees[t.id] === m).length} tasks</span></div>)}</div><div className="gentle-callout"><Icon name="heart" /><p>Include {name} in conversations and choices wherever possible. A plan works best when it reflects their wishes.</p></div><button className="text-button" onClick={() => setPlanTab('Checklist')}>Assign tasks in your checklist <Icon name="arrow" size={16} /></button></>}
-              {planTab === 'Know Me' && <><h2>{name}’s Know Me profile</h2><p className="field-hint">Record {name}’s routines and preferences for staff to read before move-in.</p>{knowMePrompts.filter((p) => p.id !== 'preferredName').map((prompt) => prompt.choices ? <Field key={prompt.id} title={prompt.label}><Choices name={`profile-${prompt.id}`} options={prompt.choices} value={profile[prompt.id] || (prompt.type === 'singleChoice' ? '' : [])} multiple={prompt.type === 'multiChoice'} onChange={(v) => setProfile({ ...profile, [prompt.id]: v })} compact /></Field> : <label className="text-field" key={prompt.id}>{prompt.label}<span className="optional">Optional</span><textarea rows={3} value={profile.notes} onChange={(e) => setProfile({ ...profile, notes: e.target.value })} placeholder="For example, how they like to start the day or what helps when they’re upset." /></label>)}<div className="know-me-actions"><button className="button primary" onClick={() => setModal({ type: 'profile' })}><Icon name="book" size={18} />Preview Know Me</button>{guidance?.planId && <button className="button secondary" disabled={knowMeState === 'loading'} onClick={draftKnowMe}><Icon name="chat" size={18} />{knowMeState === 'loading' ? 'Drafting…' : profile.aiDraft ? 'Redraft with AI' : 'Draft with AI'}</button>}</div>{knowMeState === 'error' && <p className="field-hint" role="alert">We couldn’t draft the profile right now. You can still preview and download what you wrote.</p>}{profile.aiDraft && <p className="field-hint">An AI draft is saved with your plan. Preview it, review it with {name}, and edit before sharing.</p>}</>}
+              {planTab === 'Downloads' && <><div className="section-title-row"><div><h2>Your move-in packet</h2></div><span className="draft-badge">FAMILY DRAFT</span></div><p className="field-hint">Everything you may want to hand over or take along. Files are made in your browser and are not uploaded anywhere. Review each one before sharing it.</p>
+                <div className="packet-actions"><button className="button primary" disabled={exporting} onClick={() => downloadPacket()}><Icon name="download" size={17} />{exporting ? (exportLabel || 'Creating files…') : `Download full plan (${packet.filter((item) => item.available).length} files)`}</button><span className="field-hint">Your browser may ask to allow multiple downloads. Choose Allow.</span></div>
+                <ul className="packet-list">{packet.map((item) => <li key={item.id}><div><strong>{item.title}</strong><small>{item.description}</small>{!item.available && <small className="packet-unavailable">{item.unavailableReason}</small>}</div><button className="button secondary small" disabled={exporting || !item.available} onClick={() => downloadPacket([item.id])}><Icon name="download" size={15} />Download</button></li>)}</ul>
+                <div className="packet-knowme"><h3>{name}’s Know Me profile</h3><p className="field-hint">Answered in your setup. Review it with {name}, then add or change anything before you share it.</p><div className="know-me-actions"><button className="button secondary" onClick={() => setModal({ type: 'profile' })}><Icon name="book" size={18} />Preview Know Me</button><button className="button secondary" onClick={() => openPreferences(intakeSteps.length - 1)}><Icon name="edit" size={18} />Edit answers</button>{guidance?.planId && <button className="button secondary" disabled={knowMeState === 'loading'} onClick={draftKnowMe}><Icon name="chat" size={18} />{knowMeState === 'loading' ? 'Drafting…' : profile.aiDraft ? 'Redraft with AI' : 'Draft with AI'}</button>}</div>{knowMeState === 'error' && <p className="field-hint" role="alert">We couldn’t draft the profile right now. You can still preview and download what you wrote.</p>}{profile.aiDraft && <p className="field-hint">An AI draft is saved with your plan. Preview it, review it with {name}, and edit before sharing.</p>}</div></>}
             </section><aside className="plan-side"><section className="panel shortlist-panel"><h2>{selectedHome ? 'Selected nursing home' : 'Saved nursing homes'}</h2>{selectedHome ? <>{selectedHome.isFictional && <Building variant={facilities.indexOf(selectedHome)} />}<h3>{selectedHome.name}</h3><p>{selectedHome.isFictional ? 'Fictional selection for planning only. No reservation or admission has been made.' : 'Planning reference only. No reservation or admission has been made.'}</p><button className="text-button" onClick={() => setChosenFacility('')}>Clear selection</button></> : savedHomes.length ? savedHomes.map((f) => <button className="saved-place" key={f.id} onClick={() => details(f.id)}><Icon name="home" size={18} /><span>{f.name}</span><Icon name="arrow" size={15} /></button>) : <p>Save homes from the comparison screen to see them here.</p>}<button className="button secondary full" onClick={() => setPage('facilities')}>Explore nursing homes <Icon name="arrow" size={16} /></button></section><section className="help-card"><Icon name="chat" size={26} /><h3>Questions about the move?</h3><p>Read prepared guidance on care-team conversations, coverage questions, and packing.</p><button className="text-button" onClick={() => help()}>View help topics <Icon name="arrow" size={16} /></button></section></aside></div>
           </>}
         </div></main>
@@ -420,8 +448,8 @@ export default function App() {
       <button className="button secondary full" onClick={sample}>See an example profile.</button>
       <button className="text-button account-switch" onClick={() => setModal({ type: modal.type === 'account' ? 'signin' : 'account' })}>{modal.type === 'account' ? 'Already have a plan? Sign in' : 'New here? Start a plan'}</button>
     </Dialog>}
-    {modal?.type === 'preferences' && <Dialog wide className="preferences-dialog" title={confirmPreferences ? 'Save your changes?' : 'My preferences'} subtitle={confirmPreferences ? undefined : 'Review your situation, everyday support, and family priorities.'} onClose={confirmPreferences ? () => setConfirmPreferences(false) : requestClosePreferences}>
-      {confirmPreferences ? <div className="unsaved-confirmation"><p>Save your updates before closing, or discard them to keep your previous answers.</p><div className="confirmation-actions"><button className="button primary" onClick={savePreferences}>Save changes</button><button className="button secondary" onClick={() => { setModal(null); setConfirmPreferences(false) }}>Discard changes</button><button className="text-button" onClick={() => setConfirmPreferences(false)}>Keep editing</button></div></div> : <><div className="preferences-section-label"><Icon name="settings" size={18} />My preferences</div><IntakeProgress step={preferenceStep} onChange={setPreferenceStep} /><h3 className="preferences-step-heading">{headings[intakeSteps[preferenceStep][0]][1]}</h3><IntakeWorkflow page={intakeSteps[preferenceStep][0]} intake={preferenceDraft} patch={patchPreferences} actions={preferenceActions} editing /></>}
+    {modal?.type === 'preferences' && <Dialog wide className="preferences-dialog" title={confirmPreferences ? 'Save your changes?' : 'My preferences'} subtitle={confirmPreferences ? undefined : 'Review your situation, everyday support, family priorities, and Know Me profile.'} onClose={confirmPreferences ? () => setConfirmPreferences(false) : requestClosePreferences}>
+      {confirmPreferences ? <div className="unsaved-confirmation"><p>Save your updates before closing, or discard them to keep your previous answers.</p><div className="confirmation-actions"><button className="button primary" onClick={savePreferences}>Save changes</button><button className="button secondary" onClick={() => { setModal(null); setConfirmPreferences(false) }}>Discard changes</button><button className="text-button" onClick={() => setConfirmPreferences(false)}>Keep editing</button></div></div> : <><div className="preferences-section-label"><Icon name="settings" size={18} />My preferences</div><IntakeProgress step={preferenceStep} onChange={setPreferenceStep} /><h3 className="preferences-step-heading">{headings[intakeSteps[preferenceStep][0]][1]}</h3><IntakeWorkflow page={intakeSteps[preferenceStep][0]} intake={preferenceDraft} patch={patchPreferences} profile={profileDraft} patchProfile={(values) => setProfileDraft((current) => ({ ...current, ...values }))} actions={preferenceActions} editing /></>}
     </Dialog>}
     {activeFacility && <Dialog title={activeFacility.name} subtitle={activeFacility.isFictional ? 'Fictional sample facility · no live availability or provider data' : 'CMS Care Compare data · no live availability or costs'} onClose={closeModal} wide>{activeFacility.isFictional && <Building variant={facilities.indexOf(activeFacility)} />}<Tabs items={['Overview', 'Inspection', 'Call questions']} value={detailTab} onChange={setDetailTab} label="Facility details" /><div role="tabpanel" aria-labelledby={`tab-${detailTab.replaceAll(' ', '-')}`} className="facility-dialog-content">{detailTab === 'Overview' && !activeFacility.isFictional && <LiveOverview f={activeFacility} />}{detailTab === 'Overview' && activeFacility.isFictional && <><p>{activeFacility.description}</p><div className="detail-facts">{[['Example distance', `${activeFacility.distance} miles`], ['Sample nursing hours', `${activeFacility.staffingHours} / resident / day`], ['Example languages', activeFacility.languages.join(', ')], ['Example room options', activeFacility.roomOptions.join(', ')]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><h3>Services shown in this example</h3><div className="facility-features">{activeFacility.provides.map((v) => <span key={v}>{v}</span>)}</div><div className="gentle-callout"><Icon name="clock" /><p>Confirm openings, support needs, coverage, and costs. None have been verified in this prototype.</p></div></>}{detailTab === 'Inspection' && !activeFacility.isFictional && <LiveInspection f={activeFacility} detail={facilityDetails[activeFacility.ccn]} ask={askState} onAsk={askFacility} />}{detailTab === 'Inspection' && activeFacility.isFictional && <><span className="draft-badge">ILLUSTRATIVE REPORT</span><h3>{activeFacility.inspectionLabel}</h3><p>{activeFacility.inspectionNote}</p><div className="question-highlight">Ask: “What was identified in the most recent inspection, and what has changed since?”</div><a className="text-link" href="https://www.medicare.gov/care-compare/" target="_blank" rel="noreferrer">Look up real records on Medicare Care Compare <Icon name="external" size={15} /></a></>}{detailTab === 'Call questions' && <><p className="field-hint">A starting script for your family. This demo does not place calls.</p><p className="call-script">“Hello, I’m helping {name} explore a nursing home stay. Could we talk through a few questions?”</p><ol className="question-list">{[...activeFacility.questions, 'Do you have an opening for our possible move date?', 'Who can explain the costs and coverage for our situation?'].map((q) => <li key={q}>{q}</li>)}</ol></>}</div><div className="dialog-actions"><button className="button secondary" aria-pressed={shortlist.includes(activeFacility.id)} onClick={() => toggleSaved(activeFacility.id)}><Icon name="heart" size={17} />{shortlist.includes(activeFacility.id) ? 'Saved to shortlist' : 'Save this place'}</button><button className="button primary" onClick={() => { setChosenFacility(activeFacility.id); setShortlist((current) => current.includes(activeFacility.id) ? current : [...current, activeFacility.id]); setPage('plan'); setModal(null); setNotice(activeFacility.isFictional ? 'Sample facility added to your draft plan. No booking has been made.' : 'Facility added to your draft plan as a planning reference. No booking has been made.') }}>Use in my draft plan <Icon name="arrow" size={17} /></button></div></Dialog>}
     {modal?.type === 'comparison' && <Dialog title="Your shortlist, side by side" wide className="comparison-dialog" onClose={closeModal}><FacilityComparison homes={savedHomes} onDetails={(id) => details(id)} onDownload={downloadComparison} exporting={exporting} /></Dialog>}

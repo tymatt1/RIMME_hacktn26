@@ -91,6 +91,9 @@ test('onboarding completion survives refresh and migrates existing workspaces', 
     assert.equal(loadDraft().onboardingComplete, false)
     assert.equal(saveDraft({ page: 'priorities', onboardingComplete: false }), true)
     assert.equal(loadDraft().onboardingComplete, false)
+    assert.equal(saveDraft({ page: 'knowme', onboardingComplete: false }), true)
+    assert.equal(loadDraft().page, 'knowme')
+    assert.equal(loadDraft().onboardingComplete, false)
     assert.equal(saveDraft({ page: 'welcome', onboardingComplete: true }), true)
     assert.equal(loadDraft().onboardingComplete, true)
   } finally { delete globalThis.window }

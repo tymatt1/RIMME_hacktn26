@@ -89,3 +89,9 @@ test('home remembers incomplete onboarding and validates stale return pages', ()
   assert.equal(resumePage({ page: 'welcome', returnPage: 'support', onboardingComplete: true }), 'overview')
   assert.equal(resumePage({ page: 'welcome', returnPage: 'plan', onboardingComplete: false }), 'situation')
 }))
+
+test('home resumes the Know Me intake step', () => {
+  assert.equal(resumePage({ page: 'welcome', returnPage: 'knowme', onboardingComplete: false }), 'knowme')
+  assert.equal(resumePage({ page: 'knowme', onboardingComplete: false }), 'knowme')
+  assert.equal(resumePage({ page: 'knowme', onboardingComplete: true }), 'overview')
+})

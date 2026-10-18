@@ -2,8 +2,8 @@ import { bridgeMarkSvg } from './brand.js'
 import { packingGroups } from '../data/packing.js'
 import { importanceLabel, normalizePriorityWeights, priorityTopics } from './priorities.js'
 
-const ink = '#174d43'
-const muted = '#596658'
+export const ink = '#174d43'
+export const muted = '#596658'
 const line = '#dce2d5'
 export function reportHeader(date, width = 520) {
   return { margin: [46, 25, 46, 0], stack: [
@@ -15,13 +15,13 @@ export function reportHeader(date, width = 520) {
     { canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth: 0.7, lineColor: line }], margin: [0, 9, 0, 0] },
   ] }
 }
-const clean = (value) => String(value ?? '').replace(/[\u2010-\u2015\u2212]/g, '-').replaceAll(String.fromCharCode(0), '').trim()
-const list = (value) => Array.isArray(value) ? value.map(clean).filter(Boolean).join(', ') : clean(value)
-const recorded = (value) => list(value) || 'Not recorded'
-const row = (label, value) => [{ text: label, color: muted, fontSize: 9.5 }, { text: recorded(value) }]
-const heading = (text, pageBreak) => ({ text, style: 'sectionHeading', ...(pageBreak ? { pageBreak: 'before' } : {}) })
-const paragraph = (text) => ({ text: clean(text), margin: [0, 0, 0, 10] })
-const tableLayout = {
+export const clean = (value) => String(value ?? '').replace(/[\u2010-\u2015\u2212]/g, '-').replaceAll(String.fromCharCode(0), '').trim()
+export const list = (value) => Array.isArray(value) ? value.map(clean).filter(Boolean).join(', ') : clean(value)
+export const recorded = (value) => list(value) || 'Not recorded'
+export const row = (label, value) => [{ text: label, color: muted, fontSize: 9.5 }, { text: recorded(value) }]
+export const heading = (text, pageBreak) => ({ text, style: 'sectionHeading', ...(pageBreak ? { pageBreak: 'before' } : {}) })
+export const paragraph = (text) => ({ text: clean(text), margin: [0, 0, 0, 10] })
+export const tableLayout = {
   hLineWidth: () => 0.5,
   vLineWidth: () => 0,
   hLineColor: () => line,
@@ -31,11 +31,11 @@ const tableLayout = {
   paddingBottom: () => 5,
 }
 
-function details(rows) {
+export function details(rows) {
   return { table: { widths: [140, '*'], body: rows }, layout: { ...tableLayout, paddingTop: () => 3.5, paddingBottom: () => 3.5 }, fontSize: 10, lineHeight: 1.15, margin: [0, 0, 0, 12] }
 }
 
-function records(headers, rows, widths) {
+export function records(headers, rows, widths) {
   return {
     table: { headerRows: 1, keepWithHeaderRows: 1, widths, body: [headers.map((text) => ({ text, bold: true, color: ink, fillColor: '#edf1e7', fontSize: 9.5 })), ...rows] },
     layout: tableLayout,
@@ -43,15 +43,17 @@ function records(headers, rows, widths) {
   }
 }
 
-function knowMeContent(name, profile = {}, startPage = false, includeHeading = true) {
-  const rows = [
+export function knowMeRows(profile = {}) {
+  return [
     ['Morning routine', profile.morning],
     ['Interests', list(profile.interests)],
     ['Comfort and reassurance', list(profile.comforts)],
     ['Communication preferences', list(profile.communication)],
   ]
-  const content = [...(includeHeading ? [heading('Know Me profile', startPage)] : []), { text: name, style: 'residentName' }, paragraph('Resident preferences and routines for the receiving care team.'), details(rows.map(([label, value]) => row(label, value)))]
-  content.push({ text: 'Additional information', style: 'subheading' }, paragraph(profile.notes || 'No additional information recorded.'))
+}
+
+export function knowMeDraftBlocks(profile = {}) {
+  const content = []
   if (profile.aiDraft && Object.values(profile.aiDraft).some(Boolean)) {
     content.push({ text: 'Supplemental profile draft', style: 'subheading' }, { text: 'AI-generated text. Review with the resident and family before sharing.', style: 'note', margin: [0, 0, 0, 10] })
     for (const [key, value] of Object.entries(profile.aiDraft)) {
@@ -62,6 +64,34 @@ function knowMeContent(name, profile = {}, startPage = false, includeHeading = t
   return content
 }
 
+function knowMeContent(name, profile = {}, startPage = false, includeHeading = true) {
+  const content = [...(includeHeading ? [heading('Know Me profile', startPage)] : []), { text: name, style: 'residentName' }, paragraph('Resident preferences and routines for the receiving care team.'), details(knowMeRows(profile).map(([label, value]) => row(label, value)))]
+  content.push({ text: 'Additional information', style: 'subheading' }, paragraph(profile.notes || 'No additional information recorded.'), ...knowMeDraftBlocks(profile))
+  return content
+}
+
+/** Shared page setup so every Carebridge PDF looks the same. */
+export function baseDocument({ title, subject = 'Family nursing home transition planning', footerLabel = 'Family planning document', generatedAt = new Date() } = {}) {
+  const date = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'America/Chicago' }).format(generatedAt)
+  return {
+    pageSize: 'LETTER', pageMargins: [46, 88, 46, 52],
+    info: { title, author: 'Carebridge', subject, creator: 'Carebridge', creationDate: generatedAt },
+    defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.25, color: '#25382f' },
+    styles: {
+      title: { fontSize: 24, bold: true, color: ink, margin: [0, 0, 0, 10] },
+      residentName: { fontSize: 15, color: ink, margin: [0, 0, 0, 12] },
+      sectionHeading: { fontSize: 15, bold: true, color: ink, margin: [0, 12, 0, 10] },
+      subheading: { fontSize: 12, bold: true, color: ink, margin: [0, 12, 0, 8] },
+      note: { fontSize: 9, color: muted, lineHeight: 1.4 },
+    },
+    header: () => reportHeader(date),
+    footer: (page, pages) => ({ margin: [46, 15, 46, 0], columns: [
+      { text: footerLabel, color: muted, fontSize: 8 },
+      { text: `Page ${page} of ${pages}`, alignment: 'right', color: muted, fontSize: 8 },
+    ] }),
+  }
+}
+
 /** Pure report definition. It includes recorded facts, without generating new advice. */
 export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new Date() } = {}) {
   const intake = data.intake || {}
@@ -69,7 +99,6 @@ export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new
   const name = clean(intake.personName) || 'Resident name not recorded'
   const isProfile = kind === 'know-me'
   const title = isProfile ? 'Know Me Profile' : 'Nursing Home Transition Plan'
-  const date = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'America/Chicago' }).format(generatedAt)
   const tasks = Array.isArray(data.checklist) ? data.checklist : []
   const completedPacking = new Set(data.checkedPackingItems || [])
   const facilities = [...new Map([...(data.facilities || []), ...(data.planningFacility ? [data.planningFacility] : [])].map((facility) => [facility.id, facility])).values()]
@@ -143,26 +172,13 @@ export function createPlanDocument(data = {}, { kind = 'plan', generatedAt = new
   }
 
   return {
-    pageSize: 'LETTER', pageMargins: [46, 88, 46, 52],
-    info: { title: `${name} - ${title}`, author: 'Carebridge', subject: 'Family nursing home transition planning', creator: 'Carebridge', creationDate: generatedAt },
-    defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.25, color: '#25382f' },
-    styles: {
-      title: { fontSize: 24, bold: true, color: ink, margin: [0, 0, 0, 10] },
-      residentName: { fontSize: 15, color: ink, margin: [0, 0, 0, 12] },
-      sectionHeading: { fontSize: 15, bold: true, color: ink, margin: [0, 12, 0, 10] },
-      subheading: { fontSize: 12, bold: true, color: ink, margin: [0, 12, 0, 8] },
-      note: { fontSize: 9, color: muted, lineHeight: 1.4 },
-    },
-    header: () => reportHeader(date),
-    footer: (page, pages) => ({ margin: [46, 15, 46, 0], columns: [
-      { text: isProfile ? 'Resident profile - family review required' : 'Family planning document', color: muted, fontSize: 8 },
-      { text: `Page ${page} of ${pages}`, alignment: 'right', color: muted, fontSize: 8 },
-    ] }),
+    ...baseDocument({ title: `${name} - ${title}`, footerLabel: isProfile ? 'Resident profile - family review required' : 'Family planning document', generatedAt }),
     content,
   }
 }
 
 export function planPdfFilename(name, kind = 'plan') {
   const safeName = clean(name).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 60)
-  return `carebridge-${safeName ? `${safeName}-` : ''}${kind === 'know-me' ? 'know-me-profile' : 'transition-plan'}.pdf`
+  const slug = { plan: 'transition-plan', 'know-me': 'know-me-profile' }[kind] || kind
+  return `carebridge-${safeName ? `${safeName}-` : ''}${slug}.pdf`
 }

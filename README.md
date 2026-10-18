@@ -19,15 +19,16 @@ Choose **Create a transition plan**, then enter invented details to start a fres
 
 **See an example profile.** opens Maria and Arthur's example without overwriting a saved account. Earlier drafts created before email-based demo plans remain available through **Open the previous unlinked plan on this device**. Those older signups never saved an email, so they cannot be matched to a sign-in email automatically.
 
-Seven main screens connect the journey:
+Eight main screens connect the journey:
 
 1. Welcome and simulated account creation/sign-in.
 2. Your situation: relationship, current living setting, timing, hospital context.
 3. Everyday support: mobility, daily activities, memory, communication.
 4. Family priorities: location, travel range, monthly out-of-pocket budget, coverage categories, and family support. Set an importance slider (0–100) for each topic: close to family, staffing, inspection information, quality of care, and costs/coverage. The sliders set the match-score weights directly (costs/coverage is not scored because CMS has no cost data), and the same sliders appear on the results tab, where “Update results” re-ranks the homes and reloads them from the API. Rehabilitation, room type, and language/cultural needs use separate questions. Dragging shows a floating block and moving drop gap; mouse, touch grips, arrow buttons, and keyboard Up/Down/Home/End work. Escape cancels a drag. Older ranked drafts become slider values, and removed ranking topics remain noted without guessing answers to the new questions. The budget is optional ($0–$20,000/month in $500 steps) and does not filter facilities or estimate actual prices. Answers appear in the draft/export; the starting-point summary shows the top three priorities.
-5. Starting point: editable answers, care-setting discussion prompts, care-team questions.
-6. Nursing home exploration: CMS records when available, fictional fallback facilities, filters, sorting, saved shortlist, and detail/inspection/call-question panels. **Compare saved** opens a dialog with horizontally scrollable home columns and a branded PDF download. Both show CMS ratings as filled stars out of five and match scores as proportionate bars out of 100, retaining exact values and accessible labels on screen. Raw counts, distances, and hours remain numeric. PDFs group up to three homes per landscape page and include every saved home, with missing values and fictional records labeled. Component score bars appear only in facility details, not result cards.
-7. Transition Plan: personalized checklist, task assignments, documents/packing, family members, editable Know Me profile, and branded PDF downloads.
+5. Know Me: optional routines, interests, comforts, and notes that help staff get to know the person. It is the last intake step, and also appears in **My preferences**. The AI draft of the profile is made later from the Downloads tab, because it needs the saved plan.
+6. Starting point: editable answers, care-setting discussion prompts, care-team questions.
+7. Nursing home exploration: CMS records when available, fictional fallback facilities, filters, sorting, saved shortlist, and detail/inspection/call-question panels. **Compare saved** opens a dialog with horizontally scrollable home columns and a branded PDF download. Both show CMS ratings as filled stars out of five and match scores as proportionate bars out of 100, retaining exact values and accessible labels on screen. Raw counts, distances, and hours remain numeric. PDFs group up to three homes per landscape page and include every saved home, with missing values and fictional records labeled. Component score bars appear only in facility details, not result cards.
+8. Transition Plan: personalized checklist, task assignments, documents/packing, family members, a Downloads tab with the whole move-in packet, and branded PDF downloads.
 
 Large choice controls minimize typing. Keyboard focus, labeled radio groups, dialog focus management, reduced-motion support, and responsive layouts are included. Preferences inform the draft plan; no care level or coverage eligibility is determined. Fictional sample facilities have no match score or best-home ranking; real CMS homes get a 0–100 match score computed from the priority sliders, the person’s needs and the travel range. A chosen facility is a planning reference only, with no booking or admission.
 
@@ -35,7 +36,9 @@ Large choice controls minimize typing. Keyboard focus, labeled radio groups, dia
 
 Each demo account saves intake answers, current screen, onboarding progress, shortlist, checked tasks, family assignments, and Know Me content in browser localStorage under a separate `carebridge-demo-plan:` key. The `carebridge-demo-accounts-v1` registry stores demo emails and the active session. The previous unlinked draft remains under `carebridge-prototype-v1`. They survive refresh on the same browser and origin; localhost ports are separate origins. Use only invented data. This is not a secure medical-record system or shared account service.
 
-**Download plan (PDF)** creates a formatted Carebridge report with recorded preferences, ranked priorities, checklist status and assignments, packing progress, saved facilities, and the Know Me profile. **Download Know Me PDF** creates a separate resident profile for review with staff. Reports are generated in the browser with bundled fonts; exporting does not send report data to an external service. PDF generation loads only when a download is requested. Clear site storage to remove the browser draft completely.
+**Download full plan** (plan page header and Downloads tab) saves the whole move-in packet as separate PDF files, one after another: the transition plan, a **Resident information for the nursing home** sheet to hand to a home, the Know Me profile, a printable move-in checklist and packing list, questions to ask, and the nursing home comparison (only when two or more homes are saved). Each file also has its own Download button. The handoff sheet repeats what the family recorded, leaves blanks for medical details the app never collects, and leaves out the family’s budget and priorities. Chrome may ask to allow multiple downloads.
+
+The transition plan PDF is a formatted Carebridge report with recorded preferences, ranked priorities, checklist status and assignments, packing progress, saved facilities, and the Know Me profile. **Download Know Me PDF** creates a separate resident profile for review with staff. Reports are generated in the browser with bundled fonts; exporting does not send report data to an external service. PDF generation loads only when a download is requested. Clear site storage to remove the browser draft completely.
 
 ## Checks and production build
 
@@ -62,7 +65,10 @@ src/
   lib/demo-model.test.js     Data and storage regression tests
   lib/plan-document.js       Branded PDF layouts and recorded report content
   lib/plan-document.test.js  PDF content, privacy boundaries, and filename tests
-  lib/plan-pdf.js            Lazy browser PDF generation and download
+  lib/packet-meta.js         The list of packet files and when each is available
+  lib/packet-documents.js    Handoff, checklist and questions PDFs, and the packet file list
+  lib/packet-documents.test.js  Packet content, privacy, ordering and filename tests
+  lib/plan-pdf.js            Lazy browser PDF generation and download, including the bundle
   lib/plan.js                Team starter's checklist personalization
   lib/plan.test.js           Existing checklist regression test
 ```

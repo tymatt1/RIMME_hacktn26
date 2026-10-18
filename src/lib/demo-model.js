@@ -2,7 +2,7 @@ import { sampleIntake } from '../data/prototype.js'
 import { defaultPriorityWeights, normalizeBudget, normalizePriorityWeights, separatePreferenceTopics } from './priorities.js'
 
 const draftKey = 'carebridge-prototype-v1'
-const pages = new Set(['welcome', 'situation', 'support', 'priorities', 'overview', 'facilities', 'plan'])
+const pages = new Set(['welcome', 'situation', 'support', 'priorities', 'knowme', 'overview', 'facilities', 'plan'])
 const stringList = (value) => Array.isArray(value) ? [...new Set(value.filter((item) => typeof item === 'string'))] : []
 const needsHelp = (value) => value === 'Some help' || value === 'Substantial help'
 
